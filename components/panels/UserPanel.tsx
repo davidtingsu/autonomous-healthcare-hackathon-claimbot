@@ -20,6 +20,8 @@ import {
   useCommandCenter,
 } from "@/lib/context/CommandCenterContext";
 import type { ClaimRequest } from "@/lib/types";
+import { STATUS_BADGE_CLASS } from "@/lib/types";
+import { getClaimDisplayStatus, claimDisplayStatusLabel } from "@/lib/claim-status";
 import { buildUsersById, formatPatientLabel, formatSubscriberLabel, getClaimUserName, shortClaimId } from "@/lib/user-display";
 
 function ClaimRow({
@@ -31,6 +33,7 @@ function ClaimRow({
   patientName: string;
   onSelect: () => void;
 }) {
+  const displayStatus = getClaimDisplayStatus(claim);
   return (
     <button
       type="button"
@@ -41,7 +44,9 @@ function ClaimRow({
         <span className="font-medium">
           {patientName} · ${Number(claim.claimed_amount).toFixed(2)}
         </span>
-        <Badge variant="outline">{claim.status}</Badge>
+        <Badge className={STATUS_BADGE_CLASS[displayStatus] ?? ""}>
+          {claimDisplayStatusLabel(displayStatus)}
+        </Badge>
       </div>
       <p className="text-xs text-muted-foreground">
         {claim.service_date} · {shortClaimId(claim.id)}

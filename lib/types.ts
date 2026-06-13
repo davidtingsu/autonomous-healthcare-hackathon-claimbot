@@ -40,6 +40,7 @@ export interface ClaimRequest {
   created_at: string;
   updated_at: string;
   users?: User;
+  insurance_claim?: InsuranceClaim | null;
 }
 
 export interface InsuranceClaim {

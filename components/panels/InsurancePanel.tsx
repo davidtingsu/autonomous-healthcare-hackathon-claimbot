@@ -9,9 +9,9 @@ import { PanelUserFilter } from "@/components/panels/PanelUserFilter";
 import {
   eventSummaryWithUser,
   filterEventsForActor,
-  getInsuranceDecision,
   insuranceDecisionLabel,
 } from "@/lib/actor-feed";
+import { getClaimInsuranceDecision } from "@/lib/claim-status";
 import {
   actorHeaders,
   useCommandCenter,
@@ -34,7 +34,11 @@ export function InsurancePanel() {
   const pendingClaims = useMemo(
     () =>
       filterClaimsByUserId(
-        claims.filter((claim) => claim.status === "submitted"),
+        claims.filter(
+          (claim) =>
+            claim.status === "submitted" &&
+            (!claim.insurance_claim || claim.insurance_claim.status === "created")
+        ),
         filterUserId
       ),
     [claims, filterUserId]
@@ -47,16 +51,15 @@ export function InsurancePanel() {
 
   const reviewedClaims = useMemo(() => {
     return filterClaimsByUserId(
-      claims.filter((claim) => {
-        const decision = getInsuranceDecision(insuranceEvents, claim.id);
-        return decision !== null && !pendingClaims.some((pending) => pending.id === claim.id);
-      }),
+      claims
+        .filter((claim) => getClaimInsuranceDecision(claim) !== null)
+        .filter((claim) => !pendingClaims.some((pending) => pending.id === claim.id)),
       filterUserId
     ).map((claim) => ({
       claim,
-      decision: getInsuranceDecision(insuranceEvents, claim.id)!,
+      decision: getClaimInsuranceDecision(claim)!,
     }));
-  }, [claims, insuranceEvents, pendingClaims, filterUserId]);
+  }, [claims, pendingClaims, filterUserId]);
 
   function claimName(claim: (typeof claims)[0]) {
     return getClaimUserName(claim, usersById);
@@ -217,9 +220,7 @@ export function InsurancePanel() {
         renderEvent={(event) => {
           const claim = claims.find((item) => item.id === event.claim_request_id);
           const patientName = claim ? claimName(claim) : undefined;
-          const decision = claim
-            ? getInsuranceDecision(insuranceEvents, claim.id)
-            : null;
+          const decision = claim ? getClaimInsuranceDecision(claim) : null;
 
           return (
             <button

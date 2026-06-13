@@ -39,6 +39,7 @@ export const insuranceClaims = pgTable("insurance_claims", {
   id: uuid("id").primaryKey().defaultRandom(),
   claim_request_id: uuid("claim_request_id")
     .notNull()
+    .unique()
     .references(() => claimRequests.id),
   claimed_amount: numeric("claimed_amount", { precision: 12, scale: 2 }).notNull(),
   service_date: date("service_date").notNull(),

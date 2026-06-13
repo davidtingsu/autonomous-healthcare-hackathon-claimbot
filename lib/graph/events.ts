@@ -28,6 +28,7 @@ function toClaimEvent(row: {
 const {
   claimEvents,
   claimRequests,
+  insuranceClaims,
   notifications,
   users,
 } = schema;
@@ -107,25 +108,43 @@ export async function getClaimById(claimRequestId: string) {
 export async function getClaimWithUserById(claimRequestId: string) {
   const db = getDb();
   const rows = await db
-    .select({ claim: claimRequests, user: users })
+    .select({
+      claim: claimRequests,
+      user: users,
+      insurance: insuranceClaims,
+    })
     .from(claimRequests)
     .innerJoin(users, eq(claimRequests.user_id, users.id))
+    .leftJoin(insuranceClaims, eq(claimRequests.id, insuranceClaims.claim_request_id))
     .where(eq(claimRequests.id, claimRequestId))
     .limit(1);
   const row = rows[0];
   if (!row) throw new Error("Claim not found");
-  return { ...row.claim, users: row.user };
+  return {
+    ...row.claim,
+    users: row.user,
+    insurance_claim: row.insurance ?? null,
+  };
 }
 
 export async function listClaimsWithUsers() {
   const db = getDb();
   const rows = await db
-    .select({ claim: claimRequests, user: users })
+    .select({
+      claim: claimRequests,
+      user: users,
+      insurance: insuranceClaims,
+    })
     .from(claimRequests)
     .innerJoin(users, eq(claimRequests.user_id, users.id))
+    .leftJoin(insuranceClaims, eq(claimRequests.id, insuranceClaims.claim_request_id))
     .orderBy(desc(claimRequests.created_at));
 
-  return rows.map((row) => ({ ...row.claim, users: row.user }));
+  return rows.map((row) => ({
+    ...row.claim,
+    users: row.user,
+    insurance_claim: row.insurance ?? null,
+  }));
 }
 
 export async function listEvents(limit = 200, claimId?: string | null): Promise<ClaimEvent[]> {

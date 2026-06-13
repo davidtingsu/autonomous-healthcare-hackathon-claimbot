@@ -36,7 +36,7 @@ CREATE TABLE claim_requests (
 
 CREATE TABLE insurance_claims (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  claim_request_id UUID NOT NULL REFERENCES claim_requests(id),
+  claim_request_id UUID NOT NULL UNIQUE REFERENCES claim_requests(id),
   claimed_amount NUMERIC(12, 2) NOT NULL,
   service_date DATE NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('created', 'approved', 'denied')),
