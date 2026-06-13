@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Claims Command Center",
-  description: "Interactive claims lifecycle with HITL actor panels",
+  description: "",
 };
 
 export default function RootLayout({

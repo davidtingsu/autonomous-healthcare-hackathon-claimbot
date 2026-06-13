@@ -82,6 +82,7 @@ export function UserPanel() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [savingClaimId, setSavingClaimId] = useState<string | null>(null);
+  const [revisionReceiptFile, setRevisionReceiptFile] = useState<File | null>(null);
 
   const subscribers = users.filter((u) => !u.primary_id);
   const dependents = users.filter((u) => u.primary_id === selectedUserId);
@@ -140,15 +141,28 @@ export function UserPanel() {
   async function updateClaim(claimId: string) {
     setSavingClaimId(claimId);
     try {
-      await fetch(`/api/claims/${claimId}`, {
-        method: "PATCH",
-        headers: actorHeaders("user"),
-        body: JSON.stringify({
-          claimedAmount: Number(amount),
-          serviceDate,
-        }),
-      });
+      if (revisionReceiptFile) {
+        const form = new FormData();
+        form.append("claimedAmount", amount);
+        form.append("serviceDate", serviceDate);
+        form.append("receipt", revisionReceiptFile);
+        await fetch(`/api/claims/${claimId}`, {
+          method: "PATCH",
+          headers: { "X-Actor-Role": "user" },
+          body: form,
+        });
+      } else {
+        await fetch(`/api/claims/${claimId}`, {
+          method: "PATCH",
+          headers: actorHeaders("user"),
+          body: JSON.stringify({
+            claimedAmount: Number(amount),
+            serviceDate,
+          }),
+        });
+      }
       setEditingClaimId(null);
+      setRevisionReceiptFile(null);
       await refresh();
     } finally {
       setSavingClaimId(null);
@@ -224,6 +238,7 @@ export function UserPanel() {
         heightClass="h-[360px]"
         events={userEvents}
         notifications={userNotifications}
+        eventsDefaultOpen={false}
         pinnedHeader={
           <div className="rounded-md border border-teal-800/50 bg-teal-950/20 p-3">
             <div className="flex items-center justify-between">
@@ -306,7 +321,13 @@ export function UserPanel() {
                 View claim
               </Button>
               {n.type === "revision_requested" && !revised && (
-                <Button size="sm" onClick={() => setEditingClaimId(n.claim_request_id)}>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setEditingClaimId(n.claim_request_id);
+                    setRevisionReceiptFile(null);
+                  }}
+                >
                   Edit claim
                 </Button>
               )}
@@ -320,6 +341,14 @@ export function UserPanel() {
               <div className="mt-2 space-y-2 border-t pt-2">
                 <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
                 <Input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} />
+                <div>
+                  <Label className="text-xs">Replace receipt (optional)</Label>
+                  <Input
+                    type="file"
+                    accept="image/*,application/pdf,.pdf"
+                    onChange={(e) => setRevisionReceiptFile(e.target.files?.[0] ?? null)}
+                  />
+                </div>
                 <Button
                   size="sm"
                   disabled={savingClaimId === n.claim_request_id}

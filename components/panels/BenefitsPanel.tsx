@@ -15,12 +15,14 @@ import {
 } from "@/components/ui/select";
 import { ActorEventFeed } from "@/components/panels/ActorEventFeed";
 import { PanelUserFilter } from "@/components/panels/PanelUserFilter";
-import { eventSummaryWithUser } from "@/lib/actor-feed";
+import { ReceiptValidationAlert } from "@/components/panels/ReceiptValidationAlert";
 import {
   actorHeaders,
   useCommandCenter,
 } from "@/lib/context/CommandCenterContext";
 import { filterEventsForActor } from "@/lib/actor-feed";
+import { getClaimValidationState } from "@/lib/receipt-validation-display";
+import type { ClaimRequest } from "@/lib/types";
 import {
   buildUsersById,
   filterClaimsByUserId,
@@ -28,6 +30,140 @@ import {
   getClaimUserName,
   shortClaimId,
 } from "@/lib/user-display";
+
+type ClaimCardProps = {
+  claim: ClaimRequest;
+  patientName: string;
+  validation: ReturnType<typeof getClaimValidationState>;
+  edit: { userId: string; amount: string; date: string };
+  users: ReturnType<typeof useCommandCenter>["users"];
+  receiptFile: File | null;
+  statusLabel: string;
+  statusClass: string;
+  showReviewActions: boolean;
+  busy: boolean;
+  isAction: (action: string) => boolean;
+  onSelect: () => void;
+  onEditUser: (userId: string) => void;
+  onEditDate: (date: string) => void;
+  onEditAmount: (amount: string) => void;
+  onReceiptChange: (file: File | null) => void;
+  onSave: () => void;
+  onRevise?: () => void;
+  onSubmit?: () => void;
+  onCancel?: () => void;
+};
+
+function BenefitsClaimCard({
+  claim,
+  patientName,
+  validation,
+  edit,
+  users,
+  receiptFile,
+  statusLabel,
+  statusClass,
+  showReviewActions,
+  busy,
+  isAction,
+  onSelect,
+  onEditUser,
+  onEditDate,
+  onEditAmount,
+  onReceiptChange,
+  onSave,
+  onRevise,
+  onSubmit,
+  onCancel,
+}: ClaimCardProps) {
+  return (
+    <div className="rounded-md border border-amber-800/40 bg-amber-950/10 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          className="text-left text-sm font-semibold hover:text-teal-400"
+          onClick={onSelect}
+        >
+          {patientName} · ${Number(claim.claimed_amount).toFixed(2)} ·{" "}
+          {String(claim.service_date).slice(0, 10)}
+        </button>
+        <Badge className={statusClass}>{statusLabel}</Badge>
+      </div>
+      <p className="text-xs text-muted-foreground">{shortClaimId(claim.id)}</p>
+
+      <ReceiptValidationAlert
+        issues={validation.issues}
+        mode={validation.mode}
+        passed={validation.passed}
+        scanning={validation.scanning}
+      />
+
+      <div className="mt-3 grid gap-2">
+        <div>
+          <Label className="text-xs">User</Label>
+          <Select value={edit.userId} onValueChange={(v) => v && onEditUser(v)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {users.map((user) => (
+                <SelectItem key={user.id} value={user.id}>
+                  {user.first_name} {user.last_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label className="text-xs">Service date</Label>
+          <Input type="date" value={edit.date} onChange={(e) => onEditDate(e.target.value)} />
+        </div>
+        <div>
+          <Label className="text-xs">Amount</Label>
+          <Input
+            type="number"
+            value={edit.amount}
+            onChange={(e) => onEditAmount(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label className="text-xs">Replace receipt (optional)</Label>
+          <Input
+            type="file"
+            accept="image/*,application/pdf,.pdf"
+            onChange={(e) => onReceiptChange(e.target.files?.[0] ?? null)}
+          />
+          {receiptFile && (
+            <p className="mt-1 text-xs text-muted-foreground">{receiptFile.name}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" disabled={busy} onClick={onSave}>
+          {isAction("save") && <Loader2 className="animate-spin" />}
+          {isAction("save") ? "Saving..." : "Save edits"}
+        </Button>
+        {showReviewActions && (
+          <>
+            <Button size="sm" variant="secondary" disabled={busy} onClick={onRevise}>
+              {isAction("revise") && <Loader2 className="animate-spin" />}
+              {isAction("revise") ? "Requesting..." : "Request revision"}
+            </Button>
+            <Button size="sm" disabled={busy} onClick={onSubmit}>
+              {isAction("submit") && <Loader2 className="animate-spin" />}
+              {isAction("submit") ? "Submitting..." : "Submit to insurance"}
+            </Button>
+            <Button size="sm" variant="destructive" disabled={busy} onClick={onCancel}>
+              {isAction("cancel") && <Loader2 className="animate-spin" />}
+              {isAction("cancel") ? "Cancelling..." : "Cancel for submission"}
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function BenefitsPanel() {
   const { users, claims, events, setSelectedClaimId, refresh } = useCommandCenter();
@@ -43,49 +179,79 @@ export function BenefitsPanel() {
     [claims, filterUserId]
   );
 
+  const revisionClaims = useMemo(
+    () =>
+      filterClaimsByUserId(
+        claims.filter((claim) => claim.status === "revision_requested"),
+        filterUserId
+      ),
+    [claims, filterUserId]
+  );
+
   const benefitsEvents = useMemo(() => {
     const actorEvents = filterEventsForActor(events, claims, "benefits_company");
     return filterEventsByClaimUser(actorEvents, claims, filterUserId);
   }, [events, claims, filterUserId]);
 
-  const [edits, setEdits] = useState<Record<string, { userId: string; amount: string; date: string }>>({});
+  const [edits, setEdits] = useState<
+    Record<string, { userId: string; amount: string; date: string }>
+  >({});
+  const [receiptFiles, setReceiptFiles] = useState<Record<string, File | null>>({});
   const [pending, setPending] = useState<{ claimId: string; action: string } | null>(null);
 
-  function getEdit(claimId: string, claim: (typeof claims)[0]) {
+  function getEdit(claimId: string, claim: ClaimRequest) {
     return (
       edits[claimId] ?? {
         userId: claim.user_id,
         amount: String(claim.claimed_amount),
-        date: claim.service_date,
+        date: String(claim.service_date).slice(0, 10),
       }
     );
   }
 
-  function claimName(claim: (typeof claims)[0]) {
+  function claimName(claim: ClaimRequest) {
     return getClaimUserName(claim, usersById);
   }
 
   async function saveEdits(claimId: string) {
-    const edit = edits[claimId];
-    if (!edit) return;
+    const edit = edits[claimId] ?? getEdit(claimId, claims.find((c) => c.id === claimId)!);
+    const receiptFile = receiptFiles[claimId];
+
     setPending({ claimId, action: "save" });
     try {
-      await fetch(`/api/claims/${claimId}`, {
-        method: "PATCH",
-        headers: actorHeaders("benefits_company"),
-        body: JSON.stringify({
-          userId: edit.userId,
-          claimedAmount: Number(edit.amount),
-          serviceDate: edit.date,
-        }),
-      });
+      if (receiptFile) {
+        const form = new FormData();
+        form.append("userId", edit.userId);
+        form.append("claimedAmount", edit.amount);
+        form.append("serviceDate", edit.date);
+        form.append("receipt", receiptFile);
+        await fetch(`/api/claims/${claimId}`, {
+          method: "PATCH",
+          headers: { "X-Actor-Role": "benefits_company" },
+          body: form,
+        });
+      } else {
+        await fetch(`/api/claims/${claimId}`, {
+          method: "PATCH",
+          headers: actorHeaders("benefits_company"),
+          body: JSON.stringify({
+            userId: edit.userId,
+            claimedAmount: Number(edit.amount),
+            serviceDate: edit.date,
+          }),
+        });
+      }
+      setReceiptFiles((prev) => ({ ...prev, [claimId]: null }));
       await refresh();
     } finally {
       setPending(null);
     }
   }
 
-  async function reviewAction(claimId: string, action: "revise" | "submit" | "cancel") {
+  async function reviewAction(
+    claimId: string,
+    action: "revise" | "submit" | "cancel"
+  ) {
     setPending({ claimId, action });
     try {
       await fetch(`/api/claims/${claimId}/benefits-review`, {
@@ -99,9 +265,69 @@ export function BenefitsPanel() {
     }
   }
 
+  const pinnedClaimIds = new Set([
+    ...reviewingClaims.map((c) => c.id),
+    ...revisionClaims.map((c) => c.id),
+  ]);
+
   const historyEvents = benefitsEvents.filter(
-    (event) => !reviewingClaims.some((claim) => claim.id === event.claim_request_id)
+    (event) => !pinnedClaimIds.has(event.claim_request_id)
   );
+
+  function renderClaimCard(claim: ClaimRequest, showReviewActions: boolean) {
+    const patientName = claimName(claim);
+    const validation = getClaimValidationState(claim, benefitsEvents, patientName);
+    const edit = getEdit(claim.id, claim);
+    const busy = pending?.claimId === claim.id;
+    const isAction = (action: string) => busy && pending?.action === action;
+
+    return (
+      <BenefitsClaimCard
+        key={claim.id}
+        claim={claim}
+        patientName={patientName}
+        validation={validation}
+        edit={edit}
+        users={users}
+        receiptFile={receiptFiles[claim.id] ?? null}
+        statusLabel={claim.status.replace(/_/g, " ")}
+        statusClass={
+          claim.status === "revision_requested"
+            ? "bg-orange-950/50 text-orange-400"
+            : "bg-amber-950/50 text-amber-400"
+        }
+        showReviewActions={showReviewActions}
+        busy={busy}
+        isAction={isAction}
+        onSelect={() => setSelectedClaimId(claim.id)}
+        onEditUser={(userId) =>
+          setEdits((prev) => ({
+            ...prev,
+            [claim.id]: { ...getEdit(claim.id, claim), userId },
+          }))
+        }
+        onEditDate={(date) =>
+          setEdits((prev) => ({
+            ...prev,
+            [claim.id]: { ...getEdit(claim.id, claim), date },
+          }))
+        }
+        onEditAmount={(amount) =>
+          setEdits((prev) => ({
+            ...prev,
+            [claim.id]: { ...getEdit(claim.id, claim), amount },
+          }))
+        }
+        onReceiptChange={(file) =>
+          setReceiptFiles((prev) => ({ ...prev, [claim.id]: file }))
+        }
+        onSave={() => saveEdits(claim.id)}
+        onRevise={() => reviewAction(claim.id, "revise")}
+        onSubmit={() => reviewAction(claim.id, "submit")}
+        onCancel={() => reviewAction(claim.id, "cancel")}
+      />
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -109,146 +335,12 @@ export function BenefitsPanel() {
       <ActorEventFeed
         heightClass="h-[380px]"
         events={historyEvents}
+        eventsDefaultOpen={false}
         emptyMessage="No claims awaiting benefits review"
         pinnedHeader={
           <>
-            {reviewingClaims.map((claim) => {
-              const edit = getEdit(claim.id, claim);
-              const patientName = claimName(claim);
-              const validationEvent = benefitsEvents.find(
-                (event) =>
-                  event.claim_request_id === claim.id &&
-                  event.event_type.startsWith("receipt_validation")
-              );
-
-              return (
-                <div
-                  key={claim.id}
-                  className="rounded-md border border-amber-800/40 bg-amber-950/10 p-3"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      className="text-left text-sm font-semibold hover:text-teal-400"
-                      onClick={() => setSelectedClaimId(claim.id)}
-                    >
-                      {patientName} · ${Number(claim.claimed_amount).toFixed(2)} · {claim.service_date}
-                    </button>
-                    <Badge className="bg-amber-950/50 text-amber-400">reviewing</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {shortClaimId(claim.id)}
-                  </p>
-
-                  {validationEvent && (
-                    <div className="mt-2 rounded border border-dashed border-amber-700/50 bg-amber-950/20 p-2 text-xs">
-                      <p className="font-medium">{eventSummaryWithUser(validationEvent, patientName)}</p>
-                      <pre className="mt-1 whitespace-pre-wrap text-muted-foreground">
-                        {JSON.stringify(validationEvent.payload, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-
-                  <div className="mt-3 grid gap-2">
-                    <div>
-                      <Label className="text-xs">User</Label>
-                      <Select
-                        value={edit.userId}
-                        onValueChange={(v) => {
-                          if (!v) return;
-                          setEdits((prev) => ({
-                            ...prev,
-                            [claim.id]: { ...getEdit(claim.id, claim), userId: v },
-                          }));
-                        }}
-                      >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {users.map((user) => (
-                            <SelectItem key={user.id} value={user.id}>
-                              {user.first_name} {user.last_name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Service date</Label>
-                      <Input
-                        type="date"
-                        value={edit.date}
-                        onChange={(e) =>
-                          setEdits((prev) => ({
-                            ...prev,
-                            [claim.id]: { ...getEdit(claim.id, claim), date: e.target.value },
-                          }))
-                        }
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Amount</Label>
-                      <Input
-                        type="number"
-                        value={edit.amount}
-                        onChange={(e) =>
-                          setEdits((prev) => ({
-                            ...prev,
-                            [claim.id]: { ...getEdit(claim.id, claim), amount: e.target.value },
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {(() => {
-                      const busy = pending?.claimId === claim.id;
-                      const isAction = (action: string) =>
-                        busy && pending?.action === action;
-                      return (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={busy}
-                            onClick={() => saveEdits(claim.id)}
-                          >
-                            {isAction("save") && <Loader2 className="animate-spin" />}
-                            {isAction("save") ? "Saving..." : "Save edits"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={busy}
-                            onClick={() => reviewAction(claim.id, "revise")}
-                          >
-                            {isAction("revise") && <Loader2 className="animate-spin" />}
-                            {isAction("revise") ? "Requesting..." : "Request revision"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            disabled={busy}
-                            onClick={() => reviewAction(claim.id, "submit")}
-                          >
-                            {isAction("submit") && <Loader2 className="animate-spin" />}
-                            {isAction("submit") ? "Submitting..." : "Submit to insurance"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            disabled={busy}
-                            onClick={() => reviewAction(claim.id, "cancel")}
-                          >
-                            {isAction("cancel") && <Loader2 className="animate-spin" />}
-                            {isAction("cancel") ? "Cancelling..." : "Cancel for submission"}
-                          </Button>
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
-              );
-            })}
+            {reviewingClaims.map((claim) => renderClaimCard(claim, true))}
+            {revisionClaims.map((claim) => renderClaimCard(claim, false))}
           </>
         }
         renderEvent={(event) => {
@@ -262,7 +354,7 @@ export function BenefitsPanel() {
             >
               <span className="font-medium">{event.event_type}</span>
               <p className="text-xs text-muted-foreground">
-                {eventSummaryWithUser(event, patientName)}
+                {patientName ? `${patientName} · ${event.event_type.replace(/_/g, " ")}` : event.event_type.replace(/_/g, " ")}
               </p>
             </button>
           );

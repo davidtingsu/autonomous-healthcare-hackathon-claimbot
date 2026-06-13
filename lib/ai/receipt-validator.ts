@@ -69,28 +69,40 @@ export function compareReceiptToClaim(
 ): ReceiptValidationResult {
   const normalizedDate = normalizeExtractedDate(extracted.date);
   const dateForMatch = normalizedDate ?? "";
-  const patientNameMatch = patientNamesMatch(
-    extracted.patientName,
-    claim.expectedPatientName
-  );
-  const amountMatch = amountsMatch(extracted.amount, claim.claimedAmount);
-  const dateMatch = datesMatch(dateForMatch, claim.serviceDate);
+  const patientNameMissing = !extracted.patientName?.trim();
+  const amountMissing =
+    extracted.amount == null || Number.isNaN(Number(extracted.amount));
+  const dateMissing = !dateForMatch;
+
+  const patientNameMatch =
+    !patientNameMissing &&
+    patientNamesMatch(extracted.patientName, claim.expectedPatientName);
+  const amountMatch =
+    !amountMissing && amountsMatch(extracted.amount, claim.claimedAmount);
+  const dateMatch = !dateMissing && datesMatch(dateForMatch, claim.serviceDate);
+
   const passed = patientNameMatch && amountMatch && dateMatch;
   const reasons: string[] = [];
 
-  if (!patientNameMatch) {
+  if (patientNameMissing) {
+    reasons.push("Patient name missing from receipt scan");
+  } else if (!patientNameMatch) {
     reasons.push(
       `Patient name mismatch: receipt "${extracted.patientName}" vs expected "${claim.expectedPatientName}"`
     );
   }
-  if (!amountMatch) {
+  if (amountMissing) {
+    reasons.push("Amount missing from receipt scan");
+  } else if (!amountMatch) {
     reasons.push(
       `Amount mismatch: receipt $${extracted.amount} vs claimed $${claim.claimedAmount}`
     );
   }
-  if (!dateMatch) {
+  if (dateMissing) {
+    reasons.push("Service date missing from receipt scan");
+  } else if (!dateMatch) {
     reasons.push(
-      `Date mismatch: receipt ${dateForMatch || "(missing)"} vs service date ${claim.serviceDate}`
+      `Service date mismatch: receipt ${dateForMatch} vs service date ${claim.serviceDate}`
     );
   }
   if (mode === "faked") {
@@ -99,8 +111,8 @@ export function compareReceiptToClaim(
 
   return {
     mode,
-    extractedPatientName: extracted.patientName,
-    extractedAmount: extracted.amount,
+    extractedPatientName: extracted.patientName?.trim() ?? "",
+    extractedAmount: amountMissing ? NaN : extracted.amount,
     extractedDate: dateForMatch,
     expectedPatientName: claim.expectedPatientName,
     patientNameMatch,

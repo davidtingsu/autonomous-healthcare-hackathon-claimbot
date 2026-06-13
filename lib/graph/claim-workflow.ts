@@ -64,8 +64,10 @@ export function buildClaimWorkflow() {
     await db
       .update(claimRequests)
       .set({
-        receipt_extracted_patient_name: validation.extractedPatientName,
-        receipt_extracted_amount: String(validation.extractedAmount),
+        receipt_extracted_patient_name: validation.extractedPatientName || null,
+        receipt_extracted_amount: Number.isNaN(validation.extractedAmount)
+          ? null
+          : String(validation.extractedAmount),
         receipt_extracted_date: normalizeExtractedDate(validation.extractedDate),
         updated_at: new Date(),
       })

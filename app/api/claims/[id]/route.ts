@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readReceiptFromFormData } from "@/lib/api/receipt-upload";
 import {
   emitEvent,
   getClaimById,
@@ -8,6 +9,7 @@ import {
   updateClaimStatus,
 } from "@/lib/graph/events";
 import { runBenefitsReview } from "@/lib/graph/claim-workflow";
+import { revalidateClaimReceipt } from "@/lib/graph/receipt-revalidation";
 import { errorResponse, requireActor } from "@/lib/api/helpers";
 import { getDb, schema } from "@/lib/db";
 import { userIdSchema } from "@/lib/validation";
@@ -20,6 +22,7 @@ const benefitsPatchSchema = z.object({
   userId: userIdSchema.optional(),
   claimedAmount: z.number().positive().optional(),
   serviceDate: z.string().optional(),
+  receiptUrl: z.string().optional().nullable(),
 });
 
 const userPatchSchema = z.object({
@@ -28,6 +31,27 @@ const userPatchSchema = z.object({
   receiptUrl: z.string().optional().nullable(),
   userId: userIdSchema.optional(),
 });
+
+async function parsePatchBody(request: Request) {
+  const contentType = request.headers.get("content-type") ?? "";
+
+  if (contentType.includes("multipart/form-data")) {
+    const form = await request.formData();
+    const receiptUrl = await readReceiptFromFormData(form);
+    const userIdRaw = form.get("userId");
+    const amountRaw = form.get("claimedAmount");
+    const dateRaw = form.get("serviceDate");
+
+    return {
+      userId: userIdRaw ? userIdSchema.parse(String(userIdRaw)) : undefined,
+      claimedAmount: amountRaw ? Number(amountRaw) : undefined,
+      serviceDate: dateRaw ? String(dateRaw) : undefined,
+      receiptUrl: receiptUrl ?? undefined,
+    };
+  }
+
+  return request.json();
+}
 
 export async function PATCH(
   request: Request,
@@ -40,14 +64,31 @@ export async function PATCH(
   try {
     const existing = await getClaimById(id);
     const db = getDb();
-    const body = await request.json();
+    const body = await parsePatchBody(request);
 
     if (role === "benefits_company") {
       const parsed = benefitsPatchSchema.parse(body);
+
+      if (
+        parsed.receiptUrl &&
+        existing.status !== "reviewing" &&
+        existing.status !== "revision_requested"
+      ) {
+        return NextResponse.json(
+          { error: "Receipt can only be replaced during review or revision" },
+          { status: 400 }
+        );
+      }
+
       const updates = {
         ...(parsed.userId ? { user_id: parsed.userId } : {}),
-        ...(parsed.claimedAmount ? { claimed_amount: String(parsed.claimedAmount) } : {}),
+        ...(parsed.claimedAmount
+          ? { claimed_amount: String(parsed.claimedAmount) }
+          : {}),
         ...(parsed.serviceDate ? { service_date: parsed.serviceDate } : {}),
+        ...(parsed.receiptUrl !== undefined
+          ? { receipt_url: parsed.receiptUrl }
+          : {}),
         updated_at: new Date(),
       };
 
@@ -60,11 +101,20 @@ export async function PATCH(
       if (!data) throw new Error("Failed to update claim");
 
       await emitEvent(id, "benefits_updated_claim", "benefits_company", updates);
-      return NextResponse.json({ claim: data });
+
+      if (parsed.receiptUrl && existing.status === "reviewing") {
+        await revalidateClaimReceipt(id);
+      }
+
+      const refreshed = await getClaimWithUserById(id);
+      return NextResponse.json({ claim: refreshed });
     }
 
     const parsed = userPatchSchema.parse(body);
-    if (existing.status !== "revision_requested" && existing.status !== "created") {
+    if (
+      existing.status !== "revision_requested" &&
+      existing.status !== "created"
+    ) {
       return NextResponse.json(
         { error: "Claim is not editable in current status" },
         { status: 400 }
@@ -73,9 +123,13 @@ export async function PATCH(
 
     const updates = {
       ...(parsed.userId ? { user_id: parsed.userId } : {}),
-      ...(parsed.claimedAmount ? { claimed_amount: String(parsed.claimedAmount) } : {}),
+      ...(parsed.claimedAmount
+        ? { claimed_amount: String(parsed.claimedAmount) }
+        : {}),
       ...(parsed.serviceDate ? { service_date: parsed.serviceDate } : {}),
-      ...(parsed.receiptUrl !== undefined ? { receipt_url: parsed.receiptUrl } : {}),
+      ...(parsed.receiptUrl !== undefined
+        ? { receipt_url: parsed.receiptUrl }
+        : {}),
       status: "created" as const,
       updated_at: new Date(),
     };

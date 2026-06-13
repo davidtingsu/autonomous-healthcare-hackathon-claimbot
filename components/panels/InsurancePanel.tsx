@@ -100,6 +100,7 @@ export function InsurancePanel() {
       <ActorEventFeed
         heightClass="h-[380px]"
         events={historyEvents}
+        eventsDefaultOpen={false}
         emptyMessage={
           hasContent ? "No additional insurance events" : "No insurance claims awaiting review"
         }

@@ -48,6 +48,27 @@ describe("receipt-validator", () => {
     expect(result.dateMatch).toBe(false);
     expect(result.passed).toBe(false);
     expect(result.extractedDate).toBe("");
+    expect(result.reasons).toContain("Service date missing from receipt scan");
+  });
+
+  it("fails validation when patient name is missing", () => {
+    const result = compareReceiptToClaim(
+      { patientName: "", amount: 150, date: "2024-06-01" },
+      claim,
+      "live"
+    );
+    expect(result.passed).toBe(false);
+    expect(result.reasons).toContain("Patient name missing from receipt scan");
+  });
+
+  it("fails validation when amount is missing", () => {
+    const result = compareReceiptToClaim(
+      { patientName: "John Smith", amount: NaN, date: "2024-06-01" },
+      claim,
+      "live"
+    );
+    expect(result.passed).toBe(false);
+    expect(result.reasons).toContain("Amount missing from receipt scan");
   });
 
   it("passes when all fields match", () => {
