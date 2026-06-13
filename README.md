@@ -1,36 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Claims Command Center
 
-## Getting Started
+Interactive claims lifecycle dashboard with LangGraph HITL workflows, Vercel AI SDK receipt validation, Supabase realtime, and three actor panels.
 
-First, run the development server:
+## Stack
+
+- **Next.js** on Vercel
+- **Supabase** (Postgres, Realtime, Storage)
+- **LangGraph** (claim workflow + HITL interrupts)
+- **Vercel AI SDK** (`generateObject` for receipt vision)
+- **React Flow** (lifecycle diagram)
+- **shadcn/ui** (dark mode Slate + Teal)
+
+## Setup
+
+1. Copy env file:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.local.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Apply Supabase migrations:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+supabase db push
+# or run SQL in supabase/migrations/ manually
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+3. Install and run:
 
-## Learn More
+```bash
+npm install
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open [http://localhost:3000](http://localhost:3000).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Demo flow
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. **User** actor → select subscriber (+ optional dependent) → create claim with receipt
+2. Claim enters **Benefits HITL** → receipt validation (live LLM or faked without API key)
+3. **Benefits** → edit fields inline → Save / Request revision / Submit / Cancel
+4. **Insurance** → Approve or Deny submitted claims
+5. **User** → receives match notification in event feed
 
-## Deploy on Vercel
+## Scripts
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start dev server |
+| `npm run build` | Production build |
+| `npm run test` | Vitest unit tests |
+| `npm run typecheck` | TypeScript check |
+| `npm run lint` | ESLint |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Deploy (Vercel + GitHub)
+
+1. Push to GitHub
+2. Import repo in Vercel
+3. Set environment variables from `.env.local.example`
+4. GitHub Actions CI runs lint, typecheck, test, build on each PR
+
+## Receipt validation
+
+- **Live**: set `OPENAI_API_KEY` or `XAI_API_KEY` with `LLM_PROVIDER=openai|grok`
+- **Faked**: no API key → trusts ClaimRequest patient name, amount, date
+
+## Actors
+
+| Role | Panel |
+|------|-------|
+| User | Create/edit claims, notifications inbox |
+| Benefits Company | Review queue with inline field edits |
+| Insurance Company | Approve/deny insurance claims |
+
+Pass actor via `X-Actor-Role` header: `user`, `benefits_company`, `insurance_company`.
