@@ -25,6 +25,11 @@ export function formatSubscriberLabel(user: User): string {
   return `${formatUserName(user)} · ${shortUserId(user.id)}`;
 }
 
+export function formatPatientLabel(user: User): string {
+  const label = formatSubscriberLabel(user);
+  return user.primary_id ? `${label} (dependent)` : label;
+}
+
 export function getClaimUserShortName(
   claim: ClaimRequest,
   usersById: Map<string, User>

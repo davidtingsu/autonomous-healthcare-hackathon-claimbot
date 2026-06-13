@@ -8,6 +8,7 @@ import {
   formatUserLabel,
   formatUserName,
   formatUserShortName,
+  formatPatientLabel,
   formatSubscriberLabel,
   getClaimUserName,
 } from "@/lib/user-display";
@@ -112,6 +113,7 @@ describe("user-display", () => {
   it("formats short user names", () => {
     expect(formatUserShortName(users[0])).toBe("John S.");
     expect(formatSubscriberLabel(users[0])).toBe("John Smith · #u1");
+    expect(formatPatientLabel(users[1])).toBe("Emily Smith · #u2 (dependent)");
   });
 
   it("adds user name to event summary", () => {

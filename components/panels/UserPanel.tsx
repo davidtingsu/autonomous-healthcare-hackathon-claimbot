@@ -19,7 +19,7 @@ import {
   useCommandCenter,
 } from "@/lib/context/CommandCenterContext";
 import type { ClaimRequest } from "@/lib/types";
-import { buildUsersById, formatSubscriberLabel, getClaimUserName, shortClaimId } from "@/lib/user-display";
+import { buildUsersById, formatPatientLabel, formatSubscriberLabel, getClaimUserName, shortClaimId } from "@/lib/user-display";
 
 function ClaimRow({
   claim,
@@ -79,6 +79,7 @@ export function UserPanel() {
   const dependents = users.filter((u) => u.primary_id === selectedUserId);
   const usersById = useMemo(() => buildUsersById(users), [users]);
   const selectedSubscriber = usersById.get(selectedUserId);
+  const selectedPatient = usersById.get(patientUserId);
   const patientOptions = useMemo(() => {
     if (!selectedSubscriber) return [];
     return [selectedSubscriber, ...dependents];
@@ -221,14 +222,17 @@ export function UserPanel() {
                     value={patientUserId}
                     onValueChange={(v) => v && setPatientUserId(v)}
                   >
-                    <SelectTrigger>
-                      <SelectValue />
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select patient">
+                        {selectedPatient
+                          ? formatPatientLabel(selectedPatient)
+                          : undefined}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {patientOptions.map((user) => (
                         <SelectItem key={user.id} value={user.id}>
-                          {user.first_name} {user.last_name}
-                          {user.primary_id ? " (dependent)" : ""}
+                          {formatPatientLabel(user)}
                         </SelectItem>
                       ))}
                     </SelectContent>
