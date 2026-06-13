@@ -61,6 +61,14 @@ export function notificationTypeLabel(type: NotificationType): string {
   return labels[type];
 }
 
+export function eventSummaryWithUser(
+  event: ClaimEvent,
+  claimUserName?: string
+): string {
+  const summary = eventSummary(event);
+  return claimUserName ? `${claimUserName} · ${summary}` : summary;
+}
+
 export function eventSummary(event: ClaimEvent): string {
   const payload = event.payload ?? {};
   switch (event.event_type) {

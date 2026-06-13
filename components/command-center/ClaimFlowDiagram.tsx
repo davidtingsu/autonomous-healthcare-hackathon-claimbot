@@ -109,9 +109,9 @@ export function ClaimFlowDiagram() {
   }, [activeNode, validationBadge, setNodes, setEdges]);
 
   return (
-    <div className="h-72 rounded-lg border bg-card">
-      <div className="flex items-center justify-between border-b px-4 py-2">
-        <h2 className="text-sm font-semibold">Claim lifecycle</h2>
+    <div className="flex h-72 flex-col overflow-hidden rounded-lg border bg-card">
+      <div className="flex shrink-0 items-center justify-between border-b px-4 py-2">
+        <h2 className="text-sm font-semibold leading-normal">Claim lifecycle</h2>
         {selectedClaimId && (
           <button
             type="button"
@@ -122,18 +122,21 @@ export function ClaimFlowDiagram() {
           </button>
         )}
       </div>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        fitView
-        colorMode="dark"
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background gap={16} />
-        <Controls showInteractive={false} />
-      </ReactFlow>
+      <div className="relative min-h-0 flex-1">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          fitView
+          colorMode="dark"
+          proOptions={{ hideAttribution: true }}
+          className="h-full w-full"
+        >
+          <Background gap={16} />
+          <Controls showInteractive={false} />
+        </ReactFlow>
+      </div>
     </div>
   );
 }

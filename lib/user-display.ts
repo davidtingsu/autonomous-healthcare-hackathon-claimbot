@@ -1,0 +1,49 @@
+import type { ClaimEvent, ClaimRequest, User } from "@/lib/types";
+
+export function formatUserName(
+  user: Pick<User, "first_name" | "last_name"> | null | undefined
+): string {
+  if (!user?.first_name && !user?.last_name) return "Unknown user";
+  return `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim();
+}
+
+export function formatUserLabel(user: User): string {
+  const name = formatUserName(user);
+  return user.primary_id ? `${name} (dependent)` : name;
+}
+
+export function buildUsersById(users: User[]): Map<string, User> {
+  return new Map(users.map((user) => [user.id, user]));
+}
+
+export function getClaimUserName(
+  claim: ClaimRequest,
+  usersById: Map<string, User>
+): string {
+  if (claim.users) return formatUserName(claim.users);
+  return formatUserName(usersById.get(claim.user_id));
+}
+
+export function shortClaimId(claimId: string): string {
+  return `#${claimId.slice(0, 8)}`;
+}
+
+export function filterClaimsByUserId(
+  claims: ClaimRequest[],
+  userId: string | null
+): ClaimRequest[] {
+  if (!userId) return claims;
+  return claims.filter((claim) => claim.user_id === userId);
+}
+
+export function filterEventsByClaimUser(
+  events: ClaimEvent[],
+  claims: ClaimRequest[],
+  userId: string | null
+): ClaimEvent[] {
+  if (!userId) return events;
+  const claimIds = new Set(
+    claims.filter((claim) => claim.user_id === userId).map((claim) => claim.id)
+  );
+  return events.filter((event) => claimIds.has(event.claim_request_id));
+}

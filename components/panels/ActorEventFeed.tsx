@@ -13,6 +13,7 @@ export function ActorEventFeed({
   pinnedHeader,
   renderNotification,
   renderEvent,
+  getEventMeta,
   heightClass = "h-[520px]",
 }: {
   events: ClaimEvent[];
@@ -21,6 +22,7 @@ export function ActorEventFeed({
   pinnedHeader?: ReactNode;
   renderNotification?: (notification: Notification) => ReactNode;
   renderEvent?: (event: ClaimEvent) => ReactNode;
+  getEventMeta?: (event: ClaimEvent) => string | undefined;
   heightClass?: string;
 }) {
   const hasContent =
@@ -56,7 +58,9 @@ export function ActorEventFeed({
                   {new Date(event.created_at).toLocaleTimeString()}
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground">{eventSummary(event)}</p>
+              <p className="text-xs text-muted-foreground">
+                {getEventMeta?.(event) ?? eventSummary(event)}
+              </p>
             </div>
           )
         )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,19 +13,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ActorEventFeed } from "@/components/panels/ActorEventFeed";
-import { eventSummary, notificationTypeLabel } from "@/lib/actor-feed";
+import { eventSummaryWithUser, notificationTypeLabel } from "@/lib/actor-feed";
 import {
   actorHeaders,
   useCommandCenter,
 } from "@/lib/context/CommandCenterContext";
 import { filterEventsForActor, filterNotificationsForUser } from "@/lib/actor-feed";
 import type { ClaimRequest } from "@/lib/types";
+import { buildUsersById, getClaimUserName, shortClaimId } from "@/lib/user-display";
 
 function ClaimRow({
   claim,
+  patientName,
   onSelect,
 }: {
   claim: ClaimRequest;
+  patientName: string;
   onSelect: () => void;
 }) {
   return (
@@ -34,11 +37,15 @@ function ClaimRow({
       onClick={onSelect}
       className="w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-muted/30"
     >
-      <div className="flex justify-between">
-        <span>${Number(claim.claimed_amount).toFixed(2)}</span>
+      <div className="flex justify-between gap-2">
+        <span className="font-medium">
+          {patientName} · ${Number(claim.claimed_amount).toFixed(2)}
+        </span>
         <Badge variant="outline">{claim.status}</Badge>
       </div>
-      <p className="text-xs text-muted-foreground">{claim.service_date}</p>
+      <p className="text-xs text-muted-foreground">
+        {claim.service_date} · {shortClaimId(claim.id)}
+      </p>
     </button>
   );
 }
@@ -69,6 +76,11 @@ export function UserPanel() {
 
   const subscribers = users.filter((u) => !u.primary_id);
   const dependents = users.filter((u) => u.primary_id === selectedUserId);
+  const usersById = useMemo(() => buildUsersById(users), [users]);
+  const actingUser = usersById.get(claimUserId);
+  const actingUserName = actingUser
+    ? `${actingUser.first_name} ${actingUser.last_name}`
+    : "Selected user";
   const userClaims = claims.filter((c) => c.user_id === claimUserId);
   const userEvents = filterEventsForActor(events, claims, "user", claimUserId);
   const userNotifications = filterNotificationsForUser(notifications, claimUserId);
@@ -184,6 +196,7 @@ export function UserPanel() {
               {!n.read && <Badge>New</Badge>}
             </div>
             <p className="text-xs text-muted-foreground">{n.message}</p>
+            <p className="text-xs text-muted-foreground">{actingUserName}</p>
             <div className="mt-2 flex gap-2">
               <Button size="sm" variant="ghost" onClick={() => setSelectedClaimId(n.claim_request_id)}>
                 View claim
@@ -220,7 +233,9 @@ export function UserPanel() {
                 {new Date(event.created_at).toLocaleTimeString()}
               </span>
             </div>
-            <p className="text-xs text-muted-foreground">{eventSummary(event)}</p>
+            <p className="text-xs text-muted-foreground">
+              {eventSummaryWithUser(event, actingUserName)}
+            </p>
           </button>
         )}
         emptyMessage="No claims or notifications yet"
@@ -230,7 +245,12 @@ export function UserPanel() {
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">Your claims</p>
           {userClaims.map((claim) => (
-            <ClaimRow key={claim.id} claim={claim} onSelect={() => setSelectedClaimId(claim.id)} />
+            <ClaimRow
+              key={claim.id}
+              claim={claim}
+              patientName={getClaimUserName(claim, usersById)}
+              onSelect={() => setSelectedClaimId(claim.id)}
+            />
           ))}
         </div>
       )}
