@@ -7,6 +7,8 @@ import {
   filterEventsByClaimUser,
   formatUserLabel,
   formatUserName,
+  formatUserShortName,
+  formatSubscriberLabel,
   getClaimUserName,
 } from "@/lib/user-display";
 
@@ -105,6 +107,11 @@ describe("user-display", () => {
     expect(filterEventsByClaimUser(events, claims, null)).toHaveLength(2);
     expect(filterEventsByClaimUser(events, claims, "u1")).toHaveLength(1);
     expect(filterEventsByClaimUser(events, claims, "u1")[0].id).toBe("e1");
+  });
+
+  it("formats short user names", () => {
+    expect(formatUserShortName(users[0])).toBe("John S.");
+    expect(formatSubscriberLabel(users[0])).toBe("John Smith · #u1");
   });
 
   it("adds user name to event summary", () => {

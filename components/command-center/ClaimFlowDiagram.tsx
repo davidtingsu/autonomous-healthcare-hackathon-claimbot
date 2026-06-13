@@ -8,132 +8,183 @@ import {
   ReactFlow,
   useEdgesState,
   useNodesState,
+  type Edge,
+  type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Badge } from "@/components/ui/badge";
-import { EVENT_TO_NODE } from "@/lib/types";
+import { ClaimTokenNode } from "@/components/diagram/ClaimTokenNode";
+import { DiagramLegend } from "@/components/diagram/DiagramLegend";
+import { StageNode } from "@/components/diagram/StageNode";
+import { getClaimColor } from "@/lib/diagram/claim-colors";
+import {
+  getClaimsByStage,
+  getClaimStage,
+  getTokenOffset,
+  isTerminalStage,
+} from "@/lib/diagram/claim-position";
+import { DIAGRAM_EDGES } from "@/lib/diagram/edges";
+import { STAGE_NODES } from "@/lib/diagram/nodes";
 import { useCommandCenter } from "@/lib/context/CommandCenterContext";
+import {
+  buildUsersById,
+  getClaimUserShortName,
+  shortClaimId,
+} from "@/lib/user-display";
 
-const NODE_DEFS = [
-  { id: "created", label: "Created", x: 0, y: 0 },
-  { id: "benefits_hitl", label: "Benefits HITL", x: 220, y: 0 },
-  { id: "revision", label: "Revision", x: 220, y: 120 },
-  { id: "cancelled", label: "Cancelled", x: 440, y: 120 },
-  { id: "submitted", label: "Submitted", x: 440, y: 0 },
-  { id: "insurance_processing", label: "Insurance Processing", x: 660, y: 0 },
-  { id: "insurance_hitl", label: "Insurance HITL", x: 880, y: 0 },
-  { id: "notified", label: "Notified", x: 1100, y: 0 },
-];
-
-const EDGES = [
-  ["created", "benefits_hitl"],
-  ["benefits_hitl", "submitted"],
-  ["benefits_hitl", "revision"],
-  ["benefits_hitl", "cancelled"],
-  ["revision", "created"],
-  ["submitted", "insurance_processing"],
-  ["insurance_processing", "insurance_hitl"],
-  ["insurance_hitl", "notified"],
-] as const;
+const nodeTypes = {
+  stage: StageNode,
+  claimToken: ClaimTokenNode,
+};
 
 export function ClaimFlowDiagram() {
-  const { events, selectedClaimId, setSelectedClaimId } = useCommandCenter();
+  const { users, claims, events, selectedClaimId, setSelectedClaimId } =
+    useCommandCenter();
+  const usersById = useMemo(() => buildUsersById(users), [users]);
 
-  const claimEvents = useMemo(() => {
-    if (!selectedClaimId) return events.slice(0, 20);
-    return events.filter((e) => e.claim_request_id === selectedClaimId);
-  }, [events, selectedClaimId]);
+  const claimsByStage = useMemo(
+    () => getClaimsByStage(claims, events),
+    [claims, events]
+  );
 
-  const activeNode = useMemo(() => {
-    const latest = claimEvents[0];
-    if (!latest) return "created";
-    return EVENT_TO_NODE[latest.event_type] ?? "created";
-  }, [claimEvents]);
+  const activeTargetStages = useMemo(() => {
+    const stages = new Set<string>();
+    for (const claim of claims) {
+      stages.add(getClaimStage(claim.id, events, claim));
+    }
+    return stages;
+  }, [claims, events]);
 
-  const validationBadge = useMemo(() => {
-    const v = claimEvents.find((e) =>
-      e.event_type.startsWith("receipt_validation")
-    );
-    if (!v) return null;
-    return v.event_type.replace("receipt_validation_", "");
-  }, [claimEvents]);
+  const validationByStage = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const claim of claimsByStage.get("benefits_hitl") ?? []) {
+      const validation = events.find(
+        (event) =>
+          event.claim_request_id === claim.id &&
+          event.event_type.startsWith("receipt_validation_")
+      );
+      if (validation) {
+        map.set(
+          claim.id,
+          validation.event_type.replace("receipt_validation_", "")
+        );
+      }
+    }
+    const first = [...map.values()][0];
+    return first ?? null;
+  }, [claimsByStage, events]);
 
-  const initialNodes = NODE_DEFS.map((n) => ({
-    id: n.id,
-    position: { x: n.x, y: n.y },
-    data: {
-      label: (
-        <div className="text-center">
-          <div>{n.label}</div>
-          {n.id === "benefits_hitl" && validationBadge && (
-            <Badge variant="outline" className="mt-1 text-[10px]">
-              AI: {validationBadge}
-            </Badge>
-          )}
-        </div>
-      ),
-    },
-    style: {
-      border:
-        n.id === activeNode
-          ? "2px solid rgb(20 184 166)"
-          : n.id === "cancelled"
-            ? "1px solid rgb(244 63 94)"
-            : "1px solid rgb(71 85 105)",
-      background: n.id === activeNode ? "rgba(20,184,166,0.15)" : "hsl(var(--card))",
-      color: "hsl(var(--card-foreground))",
-      borderRadius: 8,
-      padding: 8,
-      minWidth: 120,
-      fontSize: 12,
-    },
-  }));
+  const { nodes: builtNodes, edges: builtEdges } = useMemo(() => {
+    const nodes: Node[] = STAGE_NODES.map((stage) => {
+      const count = claimsByStage.get(stage.id)?.length ?? 0;
 
-  const initialEdges = EDGES.map(([source, target], i) => ({
-    id: `e-${i}`,
-    source,
-    target,
-    animated: activeNode === target,
-    markerEnd: { type: MarkerType.ArrowClosed },
-    style: { stroke: activeNode === target ? "#14b8a6" : "#64748b" },
-  }));
+      return {
+        id: stage.id,
+        type: "stage",
+        position: { x: stage.x, y: stage.y },
+        data: {
+          label: stage.label,
+          color: stage.color,
+          who: stage.who,
+          tier: stage.tier,
+          tierNote: stage.tierNote,
+          count,
+          validationBadge:
+            stage.id === "benefits_hitl" ? validationByStage : null,
+        },
+        draggable: false,
+        selectable: false,
+      };
+    });
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+    for (const [stageId, stageClaims] of claimsByStage.entries()) {
+      const stage = STAGE_NODES.find((item) => item.id === stageId);
+      if (!stage) continue;
+
+      stageClaims.forEach((claim, index) => {
+        const offset = getTokenOffset(index, stageClaims.length);
+        const shortName = getClaimUserShortName(claim, usersById);
+        const label = `${shortName} · ${shortClaimId(claim.id)}`;
+
+        nodes.push({
+          id: `token-${claim.id}`,
+          type: "claimToken",
+          position: {
+            x: stage.x + offset.x - 44,
+            y: stage.y + offset.y,
+          },
+          data: {
+            label,
+            color: getClaimColor(claim.id),
+            selected: selectedClaimId === claim.id,
+            terminal: isTerminalStage(stageId),
+            claimId: claim.id,
+          },
+          draggable: false,
+        });
+      });
+    }
+
+    const edges: Edge[] = DIAGRAM_EDGES.map((edge) => {
+      const targetStage = STAGE_NODES.find((item) => item.id === edge.target);
+      const color = targetStage?.color ?? "#64748b";
+      const animated = activeTargetStages.has(edge.target);
+
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        label: edge.label,
+        animated,
+        markerEnd: { type: MarkerType.ArrowClosed, color },
+        style: {
+          stroke: animated ? color : "#475569",
+          strokeWidth: animated ? 2 : 1.5,
+        },
+        labelStyle: { fill: "#94a3b8", fontSize: 10 },
+      };
+    });
+
+    return { nodes, edges };
+  }, [
+    claimsByStage,
+    usersById,
+    selectedClaimId,
+    activeTargetStages,
+    validationByStage,
+  ]);
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(builtNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(builtEdges);
 
   useEffect(() => {
-    setNodes(initialNodes);
-    setEdges(initialEdges);
-    // initialNodes/initialEdges are recreated each render from activeNode state
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeNode, validationBadge, setNodes, setEdges]);
+    setNodes(builtNodes);
+    setEdges(builtEdges);
+  }, [builtNodes, builtEdges, setNodes, setEdges]);
 
   return (
-    <div className="flex h-72 flex-col overflow-hidden rounded-lg border bg-card">
-      <div className="flex shrink-0 items-center justify-between border-b px-4 py-2">
-        <h2 className="text-sm font-semibold leading-normal">Claim lifecycle</h2>
-        {selectedClaimId && (
-          <button
-            type="button"
-            className="text-xs text-teal-400 hover:underline"
-            onClick={() => setSelectedClaimId(null)}
-          >
-            Clear selection
-          </button>
-        )}
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card">
+      <DiagramLegend />
       <div className="relative min-h-0 flex-1">
         <ReactFlow
           nodes={nodes}
           edges={edges}
+          nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onNodeClick={(_, node) => {
+            if (node.type === "claimToken" && node.data?.claimId) {
+              setSelectedClaimId(node.data.claimId as string);
+            }
+          }}
           fitView
+          fitViewOptions={{ padding: 0.2 }}
           colorMode="dark"
           proOptions={{ hideAttribution: true }}
           className="h-full w-full"
+          nodesDraggable={false}
+          nodesConnectable={false}
         >
-          <Background gap={16} />
+          <Background gap={20} color="#334155" />
           <Controls showInteractive={false} />
         </ReactFlow>
       </div>

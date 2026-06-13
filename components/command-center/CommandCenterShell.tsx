@@ -1,39 +1,63 @@
 "use client";
 
+import { useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { ActorDrawer } from "@/components/command-center/ActorDrawer";
 import { ClaimFlowDiagram } from "@/components/command-center/ClaimFlowDiagram";
+import { DiagramHeader } from "@/components/command-center/DiagramHeader";
 import { EventLog } from "@/components/command-center/EventLog";
-import { RoleSwitcher } from "@/components/command-center/RoleSwitcher";
-import { BenefitsPanel } from "@/components/panels/BenefitsPanel";
-import { InsurancePanel } from "@/components/panels/InsurancePanel";
-import { UserPanel } from "@/components/panels/UserPanel";
-import { useCommandCenter } from "@/lib/context/CommandCenterContext";
 
-function ActorPanel() {
-  const { actorRole } = useCommandCenter();
-  if (actorRole === "benefits_company") return <BenefitsPanel />;
-  if (actorRole === "insurance_company") return <InsurancePanel />;
-  return <UserPanel />;
+const DRAWER_STORAGE_KEY = "claimbot-actor-drawer-open";
+
+function readDrawerOpen(): boolean {
+  if (typeof window === "undefined") return true;
+  const stored = localStorage.getItem(DRAWER_STORAGE_KEY);
+  return stored === null ? true : stored === "true";
 }
 
 export function CommandCenterShell() {
+  const [drawerOpen, setDrawerOpen] = useState(readDrawerOpen);
+  const [eventLogOpen, setEventLogOpen] = useState(true);
+
+  function toggleDrawer() {
+    setDrawerOpen((prev) => {
+      const next = !prev;
+      localStorage.setItem(DRAWER_STORAGE_KEY, String(next));
+      return next;
+    });
+  }
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card/50 px-6 py-4">
-        <h1 className="text-xl font-semibold tracking-tight">Claims Command Center</h1>
-        <p className="text-sm text-muted-foreground">
-          Interactive claim lifecycle with HITL actor panels
-        </p>
-      </header>
-      <main className="grid gap-4 p-4 lg:grid-cols-12">
-        <section className="space-y-4 lg:col-span-7">
+    <div className="flex h-screen flex-col overflow-hidden bg-background">
+      <DiagramHeader drawerOpen={drawerOpen} onToggleDrawer={toggleDrawer} />
+
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div
+          className={`flex min-h-0 flex-1 flex-col transition-[margin] duration-200 ${
+            drawerOpen ? "lg:mr-[420px]" : ""
+          }`}
+        >
           <ClaimFlowDiagram />
-          <EventLog />
-        </section>
-        <section className="space-y-4 lg:col-span-5">
-          <RoleSwitcher />
-          <ActorPanel />
-        </section>
-      </main>
+
+          <div className="shrink-0 border-t bg-card">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between px-4 py-2 text-left hover:bg-muted/30"
+              onClick={() => setEventLogOpen((open) => !open)}
+            >
+              <span className="text-sm font-semibold">Global event log</span>
+              {eventLogOpen ? (
+                <ChevronDown className="size-4 text-muted-foreground" />
+              ) : (
+                <ChevronUp className="size-4 text-muted-foreground" />
+              )}
+            </button>
+            {eventLogOpen && <EventLog />}
+          </div>
+        </div>
+
+        <ActorDrawer open={drawerOpen} onClose={() => toggleDrawer()} />
+      </div>
     </div>
   );
 }

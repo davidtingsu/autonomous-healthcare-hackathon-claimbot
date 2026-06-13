@@ -95,7 +95,7 @@ export function BenefitsPanel() {
     <div className="space-y-3">
       <PanelUserFilter users={users} value={filterUserId} onChange={setFilterUserId} />
       <ActorEventFeed
-        heightClass="h-[560px]"
+        heightClass="h-[380px]"
         events={historyEvents}
         emptyMessage="No claims awaiting benefits review"
         pinnedHeader={

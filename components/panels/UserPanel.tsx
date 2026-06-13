@@ -19,7 +19,7 @@ import {
   useCommandCenter,
 } from "@/lib/context/CommandCenterContext";
 import type { ClaimRequest } from "@/lib/types";
-import { buildUsersById, getClaimUserName, shortClaimId } from "@/lib/user-display";
+import { buildUsersById, formatSubscriberLabel, getClaimUserName, shortClaimId } from "@/lib/user-display";
 
 function ClaimRow({
   claim,
@@ -159,13 +159,17 @@ export function UserPanel() {
               setPatientUserId(v);
             }}
           >
-            <SelectTrigger>
-              <SelectValue />
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select subscriber">
+                {selectedSubscriber
+                  ? formatSubscriberLabel(selectedSubscriber)
+                  : undefined}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {subscribers.map((u) => (
                 <SelectItem key={u.id} value={u.id}>
-                  {u.first_name} {u.last_name}
+                  {formatSubscriberLabel(u)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -198,6 +202,7 @@ export function UserPanel() {
       </div>
 
       <ActorEventFeed
+        heightClass="h-[360px]"
         events={userEvents}
         notifications={userNotifications}
         pinnedHeader={

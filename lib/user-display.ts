@@ -7,6 +7,32 @@ export function formatUserName(
   return `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim();
 }
 
+export function formatUserShortName(
+  user: Pick<User, "first_name" | "last_name"> | null | undefined
+): string {
+  if (!user?.first_name && !user?.last_name) return "Unknown";
+  const first = user.first_name?.trim() ?? "";
+  const lastInitial = user.last_name?.trim()?.[0];
+  if (!first) return lastInitial ? `${lastInitial}.` : "Unknown";
+  return lastInitial ? `${first} ${lastInitial}.` : first;
+}
+
+export function shortUserId(userId: string): string {
+  return `#${userId.slice(0, 8)}`;
+}
+
+export function formatSubscriberLabel(user: User): string {
+  return `${formatUserName(user)} · ${shortUserId(user.id)}`;
+}
+
+export function getClaimUserShortName(
+  claim: ClaimRequest,
+  usersById: Map<string, User>
+): string {
+  if (claim.users) return formatUserShortName(claim.users);
+  return formatUserShortName(usersById.get(claim.user_id));
+}
+
 export function formatUserLabel(user: User): string {
   const name = formatUserName(user);
   return user.primary_id ? `${name} (dependent)` : name;

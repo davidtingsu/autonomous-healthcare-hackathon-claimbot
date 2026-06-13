@@ -88,7 +88,7 @@ export function InsurancePanel() {
     <div className="space-y-3">
       <PanelUserFilter users={users} value={filterUserId} onChange={setFilterUserId} />
       <ActorEventFeed
-        heightClass="h-[560px]"
+        heightClass="h-[380px]"
         events={historyEvents}
         emptyMessage={
           hasContent ? "No additional insurance events" : "No insurance claims awaiting review"

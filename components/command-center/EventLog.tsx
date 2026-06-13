@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { eventSummary } from "@/lib/actor-feed";
 import { useCommandCenter } from "@/lib/context/CommandCenterContext";
-import { buildUsersById, getClaimUserName } from "@/lib/user-display";
+import { buildUsersById, getClaimUserName, shortClaimId } from "@/lib/user-display";
 
 export function EventLog() {
   const { users, claims, events, selectedClaimId, setSelectedClaimId } = useCommandCenter();
@@ -19,20 +19,20 @@ export function EventLog() {
     : events;
 
   return (
-    <div className="relative z-10 rounded-lg border bg-card">
-      <div className="shrink-0 border-b px-4 py-3 leading-normal">
-        <h2 className="text-sm font-semibold leading-normal">Global event log</h2>
-        <p className="text-xs leading-normal text-muted-foreground">
+    <div className="relative z-10 border-t bg-card/95">
+      <div className="border-b px-4 py-1.5">
+        <p className="text-xs text-muted-foreground">
           {selectedClaimId ? "Filtered to selected claim" : "All claims"}
         </p>
       </div>
-      <ScrollArea className="h-56">
+      <ScrollArea className="h-40">
         <div className="space-y-1 p-2">
           {filtered.map((event) => {
             const claim = claimsById.get(event.claim_request_id);
             const patientName = claim
               ? getClaimUserName(claim, usersById)
               : "Unknown user";
+            const claimRef = shortClaimId(event.claim_request_id);
 
             return (
               <button
@@ -43,7 +43,7 @@ export function EventLog() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium">
-                    {patientName} · {event.event_type}
+                    {patientName} · {claimRef} · {event.event_type}
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {new Date(event.created_at).toLocaleTimeString()}
