@@ -4,6 +4,8 @@ import {
   buildFakedExtraction,
   compareReceiptToClaim,
   datesMatch,
+  getReceiptMimeType,
+  isPdfReceipt,
   normalizePatientName,
   patientNamesMatch,
 } from "@/lib/ai/receipt-validator";
@@ -53,5 +55,13 @@ describe("receipt-validator", () => {
     expect(result.mode).toBe("faked");
     expect(result.passed).toBe(true);
     expect(result.extractedPatientName).toBe("John Smith");
+  });
+
+  it("detects pdf receipt data urls", () => {
+    const pdfUrl = "data:application/pdf;base64,abc123";
+    const imageUrl = "data:image/png;base64,abc123";
+    expect(isPdfReceipt(pdfUrl)).toBe(true);
+    expect(isPdfReceipt(imageUrl)).toBe(false);
+    expect(getReceiptMimeType(pdfUrl)).toBe("application/pdf");
   });
 });

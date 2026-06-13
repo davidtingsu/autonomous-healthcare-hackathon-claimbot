@@ -81,6 +81,12 @@ export async function PATCH(
       .single();
     if (error) throw error;
 
+    await supabase
+      .from("notifications")
+      .update({ read: true })
+      .eq("claim_request_id", id)
+      .eq("type", "revision_requested");
+
     await emitEvent(supabase, id, "claim_created", "user", { revision: true });
     await updateClaimStatus(supabase, id, "created");
 

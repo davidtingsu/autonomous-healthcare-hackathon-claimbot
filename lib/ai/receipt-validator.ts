@@ -114,6 +114,29 @@ export function buildFakedExtraction(
   );
 }
 
+export function getReceiptMimeType(receiptUrl: string): string {
+  const match = receiptUrl.match(/^data:([^;]+);/);
+  return match?.[1] ?? "image/jpeg";
+}
+
+export function isPdfReceipt(receiptUrl: string): boolean {
+  return getReceiptMimeType(receiptUrl) === "application/pdf";
+}
+
+function buildReceiptContentPart(receiptUrl: string) {
+  if (isPdfReceipt(receiptUrl)) {
+    return {
+      type: "file" as const,
+      data: receiptUrl,
+      mediaType: "application/pdf" as const,
+    };
+  }
+  return {
+    type: "image" as const,
+    image: receiptUrl,
+  };
+}
+
 export async function validateReceipt(
   claim: ReceiptValidationInput
 ): Promise<ReceiptValidationResult> {
@@ -133,10 +156,7 @@ export async function validateReceipt(
               type: "text",
               text: "Extract patient name, total amount, and service date from this medical receipt. Return JSON fields patientName, amount (number), date (YYYY-MM-DD).",
             },
-            {
-              type: "image",
-              image: claim.receiptUrl ?? "",
-            },
+            buildReceiptContentPart(claim.receiptUrl ?? ""),
           ],
         },
       ],

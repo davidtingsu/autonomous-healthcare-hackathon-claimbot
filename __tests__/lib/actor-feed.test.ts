@@ -3,6 +3,9 @@ import {
   eventSummary,
   filterEventsForActor,
   filterNotificationsForUser,
+  isRevisionNotificationResolved,
+  notificationDisplayLabel,
+  notificationDisplayMessage,
 } from "@/lib/actor-feed";
 import type { ClaimEvent, ClaimRequest, Notification } from "@/lib/types";
 
@@ -97,5 +100,27 @@ describe("actor-feed", () => {
       payload: {},
       created_at: "",
     })).toContain("faked");
+  });
+
+  it("shows revised label when revision notification is resolved", () => {
+    const notification: Notification = {
+      id: "n1",
+      user_id: "u1",
+      claim_request_id: "c1",
+      type: "revision_requested",
+      message: "Your claim requires revision.",
+      read: false,
+      created_at: "",
+    };
+    const pendingClaim: ClaimRequest = { ...claims[0], status: "revision_requested" };
+
+    expect(isRevisionNotificationResolved(notification, pendingClaim)).toBe(false);
+    expect(notificationDisplayLabel(notification, pendingClaim)).toBe("Revision requested");
+
+    expect(isRevisionNotificationResolved(notification, claims[0])).toBe(true);
+    expect(notificationDisplayLabel(notification, claims[0])).toBe("Revised");
+    expect(notificationDisplayMessage(notification, claims[0])).toBe(
+      "You updated and resubmitted this claim."
+    );
   });
 });

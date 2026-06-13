@@ -61,6 +61,34 @@ export function notificationTypeLabel(type: NotificationType): string {
   return labels[type];
 }
 
+export function isRevisionNotificationResolved(
+  notification: Notification,
+  claim: ClaimRequest | undefined
+): boolean {
+  return (
+    notification.type === "revision_requested" &&
+    Boolean(claim && claim.status !== "revision_requested")
+  );
+}
+
+export function notificationDisplayLabel(
+  notification: Notification,
+  claim?: ClaimRequest
+): string {
+  if (isRevisionNotificationResolved(notification, claim)) return "Revised";
+  return notificationTypeLabel(notification.type);
+}
+
+export function notificationDisplayMessage(
+  notification: Notification,
+  claim?: ClaimRequest
+): string {
+  if (isRevisionNotificationResolved(notification, claim)) {
+    return "You updated and resubmitted this claim.";
+  }
+  return notification.message;
+}
+
 export function eventSummaryWithUser(
   event: ClaimEvent,
   claimUserName?: string

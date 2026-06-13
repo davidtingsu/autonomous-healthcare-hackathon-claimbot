@@ -13,12 +13,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ActorEventFeed } from "@/components/panels/ActorEventFeed";
-import { eventSummaryWithUser, notificationTypeLabel } from "@/lib/actor-feed";
+import { eventSummaryWithUser, filterEventsForActor, filterNotificationsForUser, isRevisionNotificationResolved, notificationDisplayLabel, notificationDisplayMessage } from "@/lib/actor-feed";
 import {
   actorHeaders,
   useCommandCenter,
 } from "@/lib/context/CommandCenterContext";
-import { filterEventsForActor, filterNotificationsForUser } from "@/lib/actor-feed";
 import type { ClaimRequest } from "@/lib/types";
 import { buildUsersById, getClaimUserName, shortClaimId } from "@/lib/user-display";
 
@@ -73,30 +72,54 @@ export function UserPanel() {
     new Date().toISOString().slice(0, 10)
   );
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [patientUserId, setPatientUserId] = useState(selectedUserId);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const subscribers = users.filter((u) => !u.primary_id);
   const dependents = users.filter((u) => u.primary_id === selectedUserId);
   const usersById = useMemo(() => buildUsersById(users), [users]);
+  const selectedSubscriber = usersById.get(selectedUserId);
+  const patientOptions = useMemo(() => {
+    if (!selectedSubscriber) return [];
+    return [selectedSubscriber, ...dependents];
+  }, [selectedSubscriber, dependents]);
+
   const actingUser = usersById.get(claimUserId);
   const actingUserName = actingUser
     ? `${actingUser.first_name} ${actingUser.last_name}`
     : "Selected user";
   const userClaims = claims.filter((c) => c.user_id === claimUserId);
+  const claimsById = useMemo(
+    () => new Map<string, ClaimRequest>(claims.map((claim) => [claim.id, claim])),
+    [claims]
+  );
   const userEvents = filterEventsForActor(events, claims, "user", claimUserId);
   const userNotifications = filterNotificationsForUser(notifications, claimUserId);
 
   async function createClaim() {
+    if (!receiptFile) {
+      setCreateError("A receipt file (image or PDF) is required.");
+      return;
+    }
+
+    setCreateError(null);
     const form = new FormData();
-    form.append("userId", claimUserId);
+    form.append("userId", patientUserId);
     form.append("claimedAmount", amount);
     form.append("serviceDate", serviceDate);
-    if (receiptFile) form.append("receipt", receiptFile);
-    await fetch("/api/claims", {
+    form.append("receipt", receiptFile);
+    const res = await fetch("/api/claims", {
       method: "POST",
       headers: { "X-Actor-Role": actorRole },
       body: form,
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setCreateError(data.error ?? "Failed to create claim");
+      return;
+    }
     setShowCreate(false);
+    setReceiptFile(null);
     await refresh();
   }
 
@@ -129,7 +152,12 @@ export function UserPanel() {
           <Label className="text-xs">Subscriber</Label>
           <Select
             value={selectedUserId}
-            onValueChange={(v) => v && setSelectedUserId(v)}
+            onValueChange={(v) => {
+              if (!v) return;
+              setSelectedUserId(v);
+              setSelectedDependentId(null);
+              setPatientUserId(v);
+            }}
           >
             <SelectTrigger>
               <SelectValue />
@@ -147,9 +175,12 @@ export function UserPanel() {
           <Label className="text-xs">Dependent (optional)</Label>
           <Select
             value={selectedDependentId ?? "none"}
-            onValueChange={(v) =>
-              setSelectedDependentId(v === "none" ? null : v)
-            }
+            onValueChange={(v) => {
+              const dependentId = v === "none" ? null : v;
+              setSelectedDependentId(dependentId);
+              if (dependentId) setPatientUserId(dependentId);
+              else setPatientUserId(selectedUserId);
+            }}
           >
             <SelectTrigger>
               <SelectValue placeholder="None" />
@@ -179,40 +210,85 @@ export function UserPanel() {
             </div>
             {showCreate && (
               <div className="mt-3 space-y-2">
+                <div>
+                  <Label className="text-xs">Patient</Label>
+                  <Select
+                    value={patientUserId}
+                    onValueChange={(v) => v && setPatientUserId(v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {patientOptions.map((user) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          {user.first_name} {user.last_name}
+                          {user.primary_id ? " (dependent)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount" />
                 <Input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} />
-                <Input type="file" accept="image/*" onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)} />
-                <Button size="sm" onClick={createClaim}>Submit claim</Button>
+                <div>
+                  <Label className="text-xs">Receipt (required, image or PDF)</Label>
+                  <Input
+                    type="file"
+                    accept="image/*,application/pdf,.pdf"
+                    required
+                    onChange={(e) => {
+                      setReceiptFile(e.target.files?.[0] ?? null);
+                      setCreateError(null);
+                    }}
+                  />
+                </div>
+                {createError && (
+                  <p className="text-xs text-destructive">{createError}</p>
+                )}
+                <Button size="sm" onClick={createClaim} disabled={!receiptFile}>
+                  Submit claim
+                </Button>
               </div>
             )}
           </div>
         }
-        renderNotification={(n) => (
+        renderNotification={(n) => {
+          const claim = claimsById.get(n.claim_request_id);
+          const revised = isRevisionNotificationResolved(n, claim);
+
+          return (
           <div
-            className={`rounded-md border p-3 ${n.type === "revision_requested" ? "border-amber-700 bg-amber-950/30" : ""}`}
+            className={`rounded-md border p-3 ${
+              revised
+                ? "border-teal-800/40 bg-teal-950/20"
+                : n.type === "revision_requested"
+                  ? "border-amber-700 bg-amber-950/30"
+                  : ""
+            }`}
           >
             <div className="flex justify-between gap-2">
-              <span className="text-sm font-medium">{notificationTypeLabel(n.type)}</span>
-              {!n.read && <Badge>New</Badge>}
+              <span className="text-sm font-medium">{notificationDisplayLabel(n, claim)}</span>
+              {!n.read && !revised && <Badge>New</Badge>}
             </div>
-            <p className="text-xs text-muted-foreground">{n.message}</p>
+            <p className="text-xs text-muted-foreground">{notificationDisplayMessage(n, claim)}</p>
             <p className="text-xs text-muted-foreground">{actingUserName}</p>
             <div className="mt-2 flex gap-2">
               <Button size="sm" variant="ghost" onClick={() => setSelectedClaimId(n.claim_request_id)}>
                 View claim
               </Button>
-              {n.type === "revision_requested" && (
+              {n.type === "revision_requested" && !revised && (
                 <Button size="sm" onClick={() => setEditingClaimId(n.claim_request_id)}>
                   Edit claim
                 </Button>
               )}
-              {!n.read && (
+              {!n.read && !revised && (
                 <Button size="sm" variant="outline" onClick={() => markRead([n.id])}>
                   Mark read
                 </Button>
               )}
             </div>
-            {editingClaimId === n.claim_request_id && (
+            {editingClaimId === n.claim_request_id && !revised && (
               <div className="mt-2 space-y-2 border-t pt-2">
                 <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
                 <Input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} />
@@ -220,7 +296,8 @@ export function UserPanel() {
               </div>
             )}
           </div>
-        )}
+          );
+        }}
         renderEvent={(event) => (
           <button
             type="button"

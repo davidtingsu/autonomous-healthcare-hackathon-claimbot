@@ -58,12 +58,22 @@ export async function POST(request: Request) {
       claimedAmount = Number(form.get("claimedAmount"));
       serviceDate = String(form.get("serviceDate"));
       const file = form.get("receipt");
-      if (file instanceof File && file.size > 0) {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const base64 = buffer.toString("base64");
-        const mime = file.type || "image/jpeg";
-        receiptUrl = `data:${mime};base64,${base64}`;
+      if (!(file instanceof File) || file.size === 0) {
+        return NextResponse.json(
+          { error: "Receipt file is required" },
+          { status: 400 }
+        );
       }
+      const mime = file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+      if (mime !== "application/pdf" && !mime.startsWith("image/")) {
+        return NextResponse.json(
+          { error: "Receipt must be an image or PDF" },
+          { status: 400 }
+        );
+      }
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const base64 = buffer.toString("base64");
+      receiptUrl = `data:${mime};base64,${base64}`;
     } else {
       const body = z
         .object({
@@ -77,6 +87,12 @@ export async function POST(request: Request) {
       claimedAmount = body.claimedAmount;
       serviceDate = body.serviceDate;
       receiptUrl = body.receiptUrl ?? null;
+      if (!receiptUrl) {
+        return NextResponse.json(
+          { error: "Receipt file is required" },
+          { status: 400 }
+        );
+      }
     }
 
     const threadId = crypto.randomUUID();
