@@ -1,6 +1,7 @@
 import { Annotation, Command, END, START, StateGraph, interrupt } from "@langchain/langgraph";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { desc, eq } from "drizzle-orm";
 import { validateReceipt } from "@/lib/ai/receipt-validator";
+import { getDb, schema } from "@/lib/db";
 import {
   emitEvent,
   emitNotification,
@@ -14,6 +15,8 @@ import type {
   ClaimGraphState,
   InsuranceAction,
 } from "@/lib/types";
+
+const { claimRequests, insuranceClaims } = schema;
 
 export const ClaimStateAnnotation = Annotation.Root({
   claimRequestId: Annotation<string>,
@@ -37,44 +40,36 @@ function userFullName(user: { first_name: string; last_name: string }) {
   return `${user.first_name} ${user.last_name}`;
 }
 
-export function buildClaimWorkflow(supabase: SupabaseClient) {
+export function buildClaimWorkflow() {
   async function enterBenefitsReview(state: State) {
-    await updateClaimStatus(supabase, state.claimRequestId, "reviewing");
-    await emitEvent(
-      supabase,
-      state.claimRequestId,
-      "enters_benefits_review",
-      "system"
-    );
+    await updateClaimStatus(state.claimRequestId, "reviewing");
+    await emitEvent(state.claimRequestId, "enters_benefits_review", "system");
     return { claimStatus: "reviewing", phase: "benefits_review" };
   }
 
   async function benefitsHITL(state: State) {
-    const claim = await getClaimWithUser(supabase, state.claimRequestId);
+    const claim = await getClaimWithUser(state.claimRequestId);
     const user = claim.users as { first_name: string; last_name: string };
 
-    await emitEvent(
-      supabase,
-      state.claimRequestId,
-      "receipt_validation_started",
-      "system"
-    );
+    await emitEvent(state.claimRequestId, "receipt_validation_started", "system");
 
     const validation = await validateReceipt({
       claimedAmount: Number(claim.claimed_amount),
-      serviceDate: claim.service_date,
+      serviceDate: String(claim.service_date),
       expectedPatientName: userFullName(user),
       receiptUrl: claim.receipt_url,
     });
 
-    await supabase
-      .from("claim_requests")
-      .update({
+    const db = getDb();
+    await db
+      .update(claimRequests)
+      .set({
         receipt_extracted_patient_name: validation.extractedPatientName,
-        receipt_extracted_amount: validation.extractedAmount,
+        receipt_extracted_amount: String(validation.extractedAmount),
         receipt_extracted_date: validation.extractedDate,
+        updated_at: new Date(),
       })
-      .eq("id", state.claimRequestId);
+      .where(eq(claimRequests.id, state.claimRequestId));
 
     const validationEvent = validation.mode === "faked"
       ? "receipt_validation_faked"
@@ -82,7 +77,7 @@ export function buildClaimWorkflow(supabase: SupabaseClient) {
         ? "receipt_validation_passed"
         : "receipt_validation_failed";
 
-    await emitEvent(supabase, state.claimRequestId, validationEvent, "system", {
+    await emitEvent(state.claimRequestId, validationEvent, "system", {
       ...validation,
     });
 
@@ -104,15 +99,13 @@ export function buildClaimWorkflow(supabase: SupabaseClient) {
     if (!action) throw new Error("Missing benefits HITL decision");
 
     if (action === "revise") {
-      await updateClaimStatus(supabase, state.claimRequestId, "revision_requested");
+      await updateClaimStatus(state.claimRequestId, "revision_requested");
       await emitEvent(
-        supabase,
         state.claimRequestId,
         "benefits_requests_revision",
         "benefits_company"
       );
       await emitNotification(
-        supabase,
         state.userId,
         state.claimRequestId,
         "revision_requested",
@@ -122,19 +115,13 @@ export function buildClaimWorkflow(supabase: SupabaseClient) {
     }
 
     if (action === "cancel") {
-      await updateClaimStatus(
-        supabase,
-        state.claimRequestId,
-        "cancelled_for_submission"
-      );
+      await updateClaimStatus(state.claimRequestId, "cancelled_for_submission");
       await emitEvent(
-        supabase,
         state.claimRequestId,
         "benefits_cancels_for_submission",
         "benefits_company"
       );
       await emitNotification(
-        supabase,
         state.userId,
         state.claimRequestId,
         "cancelled_for_submission",
@@ -147,41 +134,31 @@ export function buildClaimWorkflow(supabase: SupabaseClient) {
   }
 
   async function submitToInsurance(state: State) {
-    const claim = await getClaimWithUser(supabase, state.claimRequestId);
-    await updateClaimStatus(supabase, state.claimRequestId, "submitted");
+    const claim = await getClaimWithUser(state.claimRequestId);
+    await updateClaimStatus(state.claimRequestId, "submitted");
     await emitEvent(
-      supabase,
       state.claimRequestId,
       "benefits_submits_to_insurance",
       "benefits_company"
     );
 
-    const { data: insuranceClaim, error } = await supabase
-      .from("insurance_claims")
-      .insert({
+    const db = getDb();
+    const [insuranceClaim] = await db
+      .insert(insuranceClaims)
+      .values({
         claim_request_id: state.claimRequestId,
-        claimed_amount: claim.claimed_amount,
-        service_date: claim.service_date,
+        claimed_amount: String(claim.claimed_amount),
+        service_date: String(claim.service_date),
         status: "created",
       })
-      .select()
-      .single();
+      .returning();
 
-    if (error) throw new Error(error.message);
+    if (!insuranceClaim) throw new Error("Failed to create insurance claim");
 
-    await emitEvent(
-      supabase,
-      state.claimRequestId,
-      "insurance_claim_created",
-      "system",
-      { insuranceClaimId: insuranceClaim.id }
-    );
-    await emitEvent(
-      supabase,
-      state.claimRequestId,
-      "insurance_review_required",
-      "system"
-    );
+    await emitEvent(state.claimRequestId, "insurance_claim_created", "system", {
+      insuranceClaimId: insuranceClaim.id,
+    });
+    await emitEvent(state.claimRequestId, "insurance_review_required", "system");
 
     return {
       claimStatus: "submitted",
@@ -208,13 +185,13 @@ export function buildClaimWorkflow(supabase: SupabaseClient) {
     }
 
     const status = action === "approve" ? "approved" : "denied";
-    await supabase
-      .from("insurance_claims")
-      .update({ status })
-      .eq("id", state.insuranceClaimId);
+    const db = getDb();
+    await db
+      .update(insuranceClaims)
+      .set({ status, updated_at: new Date() })
+      .where(eq(insuranceClaims.id, state.insuranceClaimId));
 
     await emitEvent(
-      supabase,
       state.claimRequestId,
       action === "approve" ? "insurance_approved" : "insurance_denied",
       "insurance_company",
@@ -225,20 +202,20 @@ export function buildClaimWorkflow(supabase: SupabaseClient) {
   }
 
   async function matchAndNotify(state: State) {
-    const claim = await getClaimWithUser(supabase, state.claimRequestId);
-    const { data: insuranceClaim } = await supabase
-      .from("insurance_claims")
-      .select("*")
-      .eq("claim_request_id", state.claimRequestId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const claim = await getClaimWithUser(state.claimRequestId);
+    const db = getDb();
+    const [insuranceClaim] = await db
+      .select()
+      .from(insuranceClaims)
+      .where(eq(insuranceClaims.claim_request_id, state.claimRequestId))
+      .orderBy(desc(insuranceClaims.created_at))
+      .limit(1);
 
     const amountsAlign =
       insuranceClaim &&
       Math.abs(Number(insuranceClaim.claimed_amount) - Number(claim.claimed_amount)) < 0.01;
     const datesAlign =
-      insuranceClaim && insuranceClaim.service_date === claim.service_date;
+      insuranceClaim && String(insuranceClaim.service_date) === String(claim.service_date);
     const insuranceApproved = insuranceClaim?.status === "approved";
     const matched = Boolean(amountsAlign && datesAlign && insuranceApproved);
 
@@ -247,15 +224,14 @@ export function buildClaimWorkflow(supabase: SupabaseClient) {
       ? "claim_matched_approved"
       : "claim_matched_denied";
 
-    await emitEvent(supabase, state.claimRequestId, eventType, "system", {
+    await emitEvent(state.claimRequestId, eventType, "system", {
       matched,
       amountsAlign,
       datesAlign,
       insuranceApproved,
     });
-    await emitEvent(supabase, state.claimRequestId, "match_complete", "system");
+    await emitEvent(state.claimRequestId, "match_complete", "system");
     await emitNotification(
-      supabase,
       state.userId,
       state.claimRequestId,
       notificationType,
@@ -300,35 +276,32 @@ export function buildClaimWorkflow(supabase: SupabaseClient) {
 }
 
 export async function runBenefitsReview(
-  supabase: SupabaseClient,
   state: ClaimGraphState,
   threadId: string
 ) {
-  const graph = buildClaimWorkflow(supabase);
+  const graph = buildClaimWorkflow();
   const config = { configurable: { thread_id: threadId } };
   return graph.invoke(state, config);
 }
 
 export async function resumeBenefitsReview(
-  supabase: SupabaseClient,
   threadId: string,
   action: BenefitsAction
 ) {
-  const graph = buildClaimWorkflow(supabase);
+  const graph = buildClaimWorkflow();
   const config = { configurable: { thread_id: threadId } };
   return graph.invoke(new Command({ resume: action }), config);
 }
 
 export async function resumeInsuranceReview(
-  supabase: SupabaseClient,
   threadId: string,
   action: InsuranceAction
 ) {
-  const graph = buildClaimWorkflow(supabase);
+  const graph = buildClaimWorkflow();
   const config = { configurable: { thread_id: threadId } };
   return graph.invoke(new Command({ resume: action }), config);
 }
 
-export function getCompiledGraph(supabase: SupabaseClient) {
-  return buildClaimWorkflow(supabase);
+export function getCompiledGraph() {
+  return buildClaimWorkflow();
 }

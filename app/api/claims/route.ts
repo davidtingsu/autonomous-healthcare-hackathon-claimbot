@@ -1,38 +1,37 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { emitEvent } from "@/lib/graph/events";
+import {
+  emitEvent,
+  getClaimWithUserById,
+  listClaimsWithUsers,
+  listEvents,
+} from "@/lib/graph/events";
 import { runBenefitsReview } from "@/lib/graph/claim-workflow";
 import { errorResponse, requireActor } from "@/lib/api/helpers";
-import { createSupabaseServerClient } from "@/lib/supabase/client";
+import { getDb, schema } from "@/lib/db";
+import { userIdSchema } from "@/lib/validation";
 import type { ClaimEvent } from "@/lib/types";
 
 export const maxDuration = 60;
 
+const { claimRequests } = schema;
+
 export async function GET() {
   try {
-    const supabase = createSupabaseServerClient();
-    const { data: claims, error } = await supabase
-      .from("claim_requests")
-      .select("*, users(*)")
-      .order("created_at", { ascending: false });
-    if (error) throw error;
-
-    const { data: events } = await supabase
-      .from("claim_events")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const claims = await listClaimsWithUsers();
+    const events = await listEvents();
 
     const latestEventByClaim = new Map<string, ClaimEvent>();
-    for (const event of events ?? []) {
+    for (const event of events) {
       if (!latestEventByClaim.has(event.claim_request_id)) {
         latestEventByClaim.set(event.claim_request_id, event);
       }
     }
 
     return NextResponse.json({
-      claims: (claims ?? []).map((c) => ({
-        ...c,
-        latestEvent: latestEventByClaim.get(c.id) ?? null,
+      claims: claims.map((claim) => ({
+        ...claim,
+        latestEvent: latestEventByClaim.get(claim.id) ?? null,
       })),
     });
   } catch (error) {
@@ -45,7 +44,6 @@ export async function POST(request: Request) {
   if (role instanceof NextResponse) return role;
 
   try {
-    const supabase = createSupabaseServerClient();
     const contentType = request.headers.get("content-type") ?? "";
     let userId: string;
     let claimedAmount: number;
@@ -54,7 +52,7 @@ export async function POST(request: Request) {
 
     if (contentType.includes("multipart/form-data")) {
       const form = await request.formData();
-      userId = String(form.get("userId"));
+      userId = userIdSchema.parse(String(form.get("userId")));
       claimedAmount = Number(form.get("claimedAmount"));
       serviceDate = String(form.get("serviceDate"));
       const file = form.get("receipt");
@@ -77,7 +75,7 @@ export async function POST(request: Request) {
     } else {
       const body = z
         .object({
-          userId: z.string().uuid(),
+          userId: userIdSchema,
           claimedAmount: z.number().positive(),
           serviceDate: z.string(),
           receiptUrl: z.string().optional().nullable(),
@@ -96,28 +94,27 @@ export async function POST(request: Request) {
     }
 
     const threadId = crypto.randomUUID();
-    const { data: claim, error } = await supabase
-      .from("claim_requests")
-      .insert({
+    const db = getDb();
+    const [claim] = await db
+      .insert(claimRequests)
+      .values({
         user_id: userId,
-        claimed_amount: claimedAmount,
+        claimed_amount: String(claimedAmount),
         service_date: serviceDate,
         receipt_url: receiptUrl,
         status: "created",
         graph_thread_id: threadId,
       })
-      .select()
-      .single();
+      .returning();
 
-    if (error) throw error;
+    if (!claim) throw new Error("Failed to create claim");
 
-    await emitEvent(supabase, claim.id, "claim_created", "user", {
+    await emitEvent(claim.id, "claim_created", "user", {
       claimedAmount,
       serviceDate,
     });
 
     await runBenefitsReview(
-      supabase,
       {
         claimRequestId: claim.id,
         userId,
@@ -129,11 +126,7 @@ export async function POST(request: Request) {
       threadId
     );
 
-    const { data: updated } = await supabase
-      .from("claim_requests")
-      .select("*, users(*)")
-      .eq("id", claim.id)
-      .single();
+    const updated = await getClaimWithUserById(claim.id);
 
     return NextResponse.json({ claim: updated }, { status: 201 });
   } catch (error) {

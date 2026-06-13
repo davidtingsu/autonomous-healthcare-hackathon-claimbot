@@ -3,6 +3,8 @@ import {
   eventSummary,
   filterEventsForActor,
   filterNotificationsForUser,
+  getInsuranceDecision,
+  insuranceDecisionLabel,
   isRevisionNotificationResolved,
   notificationDisplayLabel,
   notificationDisplayMessage,
@@ -100,6 +102,24 @@ describe("actor-feed", () => {
       payload: {},
       created_at: "",
     })).toContain("faked");
+  });
+
+  it("resolves insurance decision from events", () => {
+    const approved = getInsuranceDecision(
+      [
+        {
+          id: "e1",
+          claim_request_id: "c1",
+          event_type: "insurance_approved",
+          actor_role: "insurance_company",
+          payload: {},
+          created_at: "",
+        },
+      ],
+      "c1"
+    );
+    expect(approved).toBe("approved");
+    expect(insuranceDecisionLabel("approved")).toBe("Approved");
   });
 
   it("shows revised label when revision notification is resolved", () => {

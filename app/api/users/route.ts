@@ -1,19 +1,12 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/client";
+import { listUsers } from "@/lib/graph/events";
+import { errorResponse } from "@/lib/api/helpers";
 
 export async function GET() {
   try {
-    const supabase = createSupabaseServerClient();
-    const { data, error } = await supabase
-      .from("users")
-      .select("*")
-      .order("first_name");
-    if (error) throw error;
-    return NextResponse.json({ users: data ?? [] });
+    const users = await listUsers();
+    return NextResponse.json({ users });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unknown error" },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

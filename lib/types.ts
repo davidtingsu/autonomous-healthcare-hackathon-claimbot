@@ -107,9 +107,11 @@ export const EVENT_TO_NODE: Record<string, string> = {
   match_complete: "notified",
 };
 
+import { DEMO_USER_IDS } from "@/lib/db/constants";
+
 export const DEMO_SUBSCRIBERS = [
-  "11111111-1111-1111-1111-111111111101",
-  "11111111-1111-1111-1111-111111111102",
+  DEMO_USER_IDS.john,
+  DEMO_USER_IDS.jane,
 ];
 
 export const STATUS_BADGE_CLASS: Record<string, string> = {

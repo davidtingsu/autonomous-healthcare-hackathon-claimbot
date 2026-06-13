@@ -15,6 +15,7 @@ import type {
   Notification,
   User,
 } from "@/lib/types";
+import { DEMO_USER_IDS } from "@/lib/db/constants";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type CommandCenterContextValue = {
@@ -44,9 +45,7 @@ export function CommandCenterProvider({
   children: React.ReactNode;
 }) {
   const [actorRole, setActorRole] = useState<ActorRole>("user");
-  const [selectedUserId, setSelectedUserId] = useState(
-    "11111111-1111-1111-1111-111111111101"
-  );
+  const [selectedUserId, setSelectedUserId] = useState<string>(DEMO_USER_IDS.john);
   const [selectedDependentId, setSelectedDependentId] = useState<string | null>(
     null
   );

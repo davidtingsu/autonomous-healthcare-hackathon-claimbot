@@ -1,67 +1,163 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { desc, eq } from "drizzle-orm";
+import { getDb, schema } from "@/lib/db";
 import type {
   ActorRole,
+  ClaimEvent,
   ClaimRequestStatus,
   NotificationType,
 } from "@/lib/types";
 
+function toClaimEvent(row: {
+  id: string;
+  claim_request_id: string;
+  event_type: string;
+  actor_role: string;
+  payload: unknown;
+  created_at: Date;
+}): ClaimEvent {
+  return {
+    id: row.id,
+    claim_request_id: row.claim_request_id,
+    event_type: row.event_type,
+    actor_role: row.actor_role as ClaimEvent["actor_role"],
+    payload: (row.payload ?? {}) as Record<string, unknown>,
+    created_at: row.created_at.toISOString(),
+  };
+}
+
+const {
+  claimEvents,
+  claimRequests,
+  notifications,
+  users,
+} = schema;
+
 export async function emitEvent(
-  supabase: SupabaseClient,
   claimRequestId: string,
   eventType: string,
   actorRole: ActorRole | "system",
   payload: Record<string, unknown> = {}
 ) {
-  const { error } = await supabase.from("claim_events").insert({
+  const db = getDb();
+  await db.insert(claimEvents).values({
     claim_request_id: claimRequestId,
     event_type: eventType,
     actor_role: actorRole,
     payload,
   });
-  if (error) throw new Error(error.message);
 }
 
 export async function emitNotification(
-  supabase: SupabaseClient,
   userId: string,
   claimRequestId: string,
   type: NotificationType,
   message: string
 ) {
-  const { error } = await supabase.from("notifications").insert({
+  const db = getDb();
+  await db.insert(notifications).values({
     user_id: userId,
     claim_request_id: claimRequestId,
     type,
     message,
     read: false,
   });
-  if (error) throw new Error(error.message);
 }
 
 export async function updateClaimStatus(
-  supabase: SupabaseClient,
   claimRequestId: string,
   status: ClaimRequestStatus,
   extra: Record<string, unknown> = {}
 ) {
-  const { error } = await supabase
-    .from("claim_requests")
-    .update({ status, ...extra })
-    .eq("id", claimRequestId);
-  if (error) throw new Error(error.message);
+  const db = getDb();
+  await db
+    .update(claimRequests)
+    .set({ status, ...extra, updated_at: new Date() })
+    .where(eq(claimRequests.id, claimRequestId));
 }
 
-export async function getClaimWithUser(
-  supabase: SupabaseClient,
-  claimRequestId: string
-) {
-  const { data, error } = await supabase
-    .from("claim_requests")
-    .select("*, users(*)")
-    .eq("id", claimRequestId)
-    .single();
-  if (error) throw new Error(error.message);
-  return data;
+export async function getClaimWithUser(claimRequestId: string) {
+  const db = getDb();
+  const rows = await db
+    .select({ claim: claimRequests, user: users })
+    .from(claimRequests)
+    .innerJoin(users, eq(claimRequests.user_id, users.id))
+    .where(eq(claimRequests.id, claimRequestId))
+    .limit(1);
+
+  const row = rows[0];
+  if (!row) throw new Error("Claim not found");
+
+  return {
+    ...row.claim,
+    users: row.user,
+  };
+}
+
+export async function getClaimById(claimRequestId: string) {
+  const db = getDb();
+  const [claim] = await db
+    .select()
+    .from(claimRequests)
+    .where(eq(claimRequests.id, claimRequestId))
+    .limit(1);
+  if (!claim) throw new Error("Claim not found");
+  return claim;
+}
+
+export async function getClaimWithUserById(claimRequestId: string) {
+  const db = getDb();
+  const rows = await db
+    .select({ claim: claimRequests, user: users })
+    .from(claimRequests)
+    .innerJoin(users, eq(claimRequests.user_id, users.id))
+    .where(eq(claimRequests.id, claimRequestId))
+    .limit(1);
+  const row = rows[0];
+  if (!row) throw new Error("Claim not found");
+  return { ...row.claim, users: row.user };
+}
+
+export async function listClaimsWithUsers() {
+  const db = getDb();
+  const rows = await db
+    .select({ claim: claimRequests, user: users })
+    .from(claimRequests)
+    .innerJoin(users, eq(claimRequests.user_id, users.id))
+    .orderBy(desc(claimRequests.created_at));
+
+  return rows.map((row) => ({ ...row.claim, users: row.user }));
+}
+
+export async function listEvents(limit = 200, claimId?: string | null): Promise<ClaimEvent[]> {
+  const db = getDb();
+  const rows = claimId
+    ? await db
+        .select()
+        .from(claimEvents)
+        .where(eq(claimEvents.claim_request_id, claimId))
+        .orderBy(desc(claimEvents.created_at))
+        .limit(limit)
+    : await db
+        .select()
+        .from(claimEvents)
+        .orderBy(desc(claimEvents.created_at))
+        .limit(limit);
+
+  return rows.map(toClaimEvent);
+}
+
+export async function listUsers() {
+  const db = getDb();
+  return db.select().from(users).orderBy(users.first_name);
+}
+
+export async function listNotificationsForUser(userId: string) {
+  const db = getDb();
+  return db
+    .select()
+    .from(notifications)
+    .where(eq(notifications.user_id, userId))
+    .orderBy(desc(notifications.created_at));
 }
 
 export const NOTIFICATION_MESSAGES: Record<NotificationType, string> = {

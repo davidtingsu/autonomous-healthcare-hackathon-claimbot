@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { resumeBenefitsReview } from "@/lib/graph/claim-workflow";
+import { getClaimById, getClaimWithUserById } from "@/lib/graph/events";
 import { errorResponse, requireActor } from "@/lib/api/helpers";
-import { createSupabaseServerClient } from "@/lib/supabase/client";
+import { z } from "zod";
 
 export const maxDuration = 60;
 
@@ -19,15 +19,9 @@ export async function POST(
   if (role instanceof NextResponse) return role;
 
   try {
-    const supabase = createSupabaseServerClient();
     const { action } = schema.parse(await request.json());
+    const claim = await getClaimById(id);
 
-    const { data: claim, error } = await supabase
-      .from("claim_requests")
-      .select("*")
-      .eq("id", id)
-      .single();
-    if (error) throw error;
     if (claim.status !== "reviewing") {
       return NextResponse.json(
         { error: "Claim is not in reviewing status" },
@@ -35,14 +29,8 @@ export async function POST(
       );
     }
 
-    await resumeBenefitsReview(supabase, claim.graph_thread_id, action);
-
-    const { data: updated } = await supabase
-      .from("claim_requests")
-      .select("*, users(*)")
-      .eq("id", id)
-      .single();
-
+    await resumeBenefitsReview(claim.graph_thread_id, action);
+    const updated = await getClaimWithUserById(id);
     return NextResponse.json({ claim: updated });
   } catch (error) {
     return errorResponse(error, error instanceof z.ZodError ? 400 : 500);

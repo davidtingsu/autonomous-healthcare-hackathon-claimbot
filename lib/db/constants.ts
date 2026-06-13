@@ -1,0 +1,7 @@
+/** Valid RFC 4122 v4 UUIDs for demo users (Zod-compatible). */
+export const DEMO_USER_IDS = {
+  john: "11111111-1111-4111-8111-111111111101",
+  jane: "11111111-1111-4111-8111-111111111102",
+  emily: "22222222-2222-4222-8222-222222222201",
+  michael: "22222222-2222-4222-8222-222222222202",
+} as const;

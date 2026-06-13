@@ -19,12 +19,16 @@ Interactive claims lifecycle dashboard with LangGraph HITL workflows, Vercel AI 
 cp .env.local.example .env.local
 ```
 
-2. Apply Supabase migrations:
+2. Apply database migrations (Drizzle):
 
 ```bash
-supabase db push
-# or run SQL in supabase/migrations/ manually
+# Add DATABASE_URL to .env.local (Supabase → Settings → Database → URI, use Transaction pooler)
+npm run db:migrate
 ```
+
+This drops and recreates all tables with valid demo user UUIDs. **supabase-js** is still used for Realtime in the browser; server routes use **Drizzle ORM**.
+
+Legacy SQL files in `supabase/migrations/` are superseded by `drizzle/0000_reset.sql`.
 
 3. Install and run:
 

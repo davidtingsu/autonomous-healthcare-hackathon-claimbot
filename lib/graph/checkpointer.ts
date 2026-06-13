@@ -1,6 +1,8 @@
+import { eq } from "drizzle-orm";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { getDb, schema } from "@/lib/db";
 
+const { langgraphCheckpoints } = schema;
 const memorySaver = new MemorySaver();
 
 export function getCheckpointer() {
@@ -8,27 +10,34 @@ export function getCheckpointer() {
 }
 
 export async function saveCheckpointToDb(
-  supabase: SupabaseClient,
   threadId: string,
   checkpoint: Record<string, unknown>
 ) {
-  const { error } = await supabase.from("langgraph_checkpoints").upsert({
-    thread_id: threadId,
-    checkpoint,
-    updated_at: new Date().toISOString(),
-  });
-  if (error) throw new Error(error.message);
+  const db = getDb();
+  await db
+    .insert(langgraphCheckpoints)
+    .values({
+      thread_id: threadId,
+      checkpoint,
+      updated_at: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: langgraphCheckpoints.thread_id,
+      set: {
+        checkpoint,
+        updated_at: new Date(),
+      },
+    });
 }
 
 export async function loadCheckpointFromDb(
-  supabase: SupabaseClient,
   threadId: string
 ): Promise<Record<string, unknown> | null> {
-  const { data, error } = await supabase
-    .from("langgraph_checkpoints")
-    .select("checkpoint")
-    .eq("thread_id", threadId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return (data?.checkpoint as Record<string, unknown>) ?? null;
+  const db = getDb();
+  const [row] = await db
+    .select({ checkpoint: langgraphCheckpoints.checkpoint })
+    .from(langgraphCheckpoints)
+    .where(eq(langgraphCheckpoints.thread_id, threadId))
+    .limit(1);
+  return (row?.checkpoint as Record<string, unknown>) ?? null;
 }

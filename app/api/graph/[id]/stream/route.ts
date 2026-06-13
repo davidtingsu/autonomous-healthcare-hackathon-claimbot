@@ -2,8 +2,8 @@ import { toUIMessageStream } from "@ai-sdk/langchain";
 import { createUIMessageStreamResponse } from "ai";
 import { NextResponse } from "next/server";
 import { getCompiledGraph } from "@/lib/graph/claim-workflow";
+import { getClaimById } from "@/lib/graph/events";
 import { errorResponse, requireActor } from "@/lib/api/helpers";
-import { createSupabaseServerClient } from "@/lib/supabase/client";
 
 export const maxDuration = 60;
 
@@ -16,21 +16,14 @@ export async function POST(
 
   try {
     const { id } = await params;
-    const supabase = createSupabaseServerClient();
-    const { data: claim, error } = await supabase
-      .from("claim_requests")
-      .select("*")
-      .eq("id", id)
-      .single();
-    if (error) throw error;
-
-    const graph = getCompiledGraph(supabase);
+    const claim = await getClaimById(id);
+    const graph = getCompiledGraph();
     const stream = await graph.stream(
       {
         claimRequestId: claim.id,
         userId: claim.user_id,
         claimedAmount: Number(claim.claimed_amount),
-        serviceDate: claim.service_date,
+        serviceDate: String(claim.service_date),
         claimStatus: claim.status,
         receiptUrl: claim.receipt_url,
       },

@@ -1,7 +1,12 @@
+import { eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { listNotificationsForUser } from "@/lib/graph/events";
 import { errorResponse, requireActor } from "@/lib/api/helpers";
-import { createSupabaseServerClient } from "@/lib/supabase/client";
+import { getDb, schema } from "@/lib/db";
+import { userIdSchema } from "@/lib/validation";
+
+const { notifications } = schema;
 
 export async function GET(request: Request) {
   const role = requireActor(request, ["user"]);
@@ -9,28 +14,18 @@ export async function GET(request: Request) {
 
   try {
     const url = new URL(request.url);
-    const userId = url.searchParams.get("userId");
-    if (!userId) {
-      return NextResponse.json({ error: "userId required" }, { status: 400 });
-    }
-
-    const supabase = createSupabaseServerClient();
-    const { data, error } = await supabase
-      .from("notifications")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-    if (error) throw error;
-    return NextResponse.json({ notifications: data ?? [] });
+    const userId = userIdSchema.parse(url.searchParams.get("userId"));
+    const data = await listNotificationsForUser(userId);
+    return NextResponse.json({ notifications: data });
   } catch (error) {
-    return errorResponse(error);
+    return errorResponse(error, error instanceof z.ZodError ? 400 : 500);
   }
 }
 
 const patchSchema = z.object({
-  ids: z.array(z.string().uuid()).optional(),
+  ids: z.array(z.uuid()).optional(),
   markAllRead: z.boolean().optional(),
-  userId: z.string().uuid().optional(),
+  userId: userIdSchema.optional(),
 });
 
 export async function PATCH(request: Request) {
@@ -39,23 +34,21 @@ export async function PATCH(request: Request) {
 
   try {
     const body = patchSchema.parse(await request.json());
-    const supabase = createSupabaseServerClient();
+    const db = getDb();
 
     if (body.markAllRead && body.userId) {
-      const { error } = await supabase
-        .from("notifications")
-        .update({ read: true })
-        .eq("user_id", body.userId);
-      if (error) throw error;
+      await db
+        .update(notifications)
+        .set({ read: true })
+        .where(eq(notifications.user_id, body.userId));
       return NextResponse.json({ ok: true });
     }
 
     if (body.ids?.length) {
-      const { error } = await supabase
-        .from("notifications")
-        .update({ read: true })
-        .in("id", body.ids);
-      if (error) throw error;
+      await db
+        .update(notifications)
+        .set({ read: true })
+        .where(inArray(notifications.id, body.ids));
       return NextResponse.json({ ok: true });
     }
 

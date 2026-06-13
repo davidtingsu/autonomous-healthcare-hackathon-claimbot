@@ -89,6 +89,24 @@ export function notificationDisplayMessage(
   return notification.message;
 }
 
+export function getInsuranceDecision(
+  events: ClaimEvent[],
+  claimId: string
+): "approved" | "denied" | null {
+  const decisionEvent = events.find(
+    (event) =>
+      event.claim_request_id === claimId &&
+      (event.event_type === "insurance_approved" ||
+        event.event_type === "insurance_denied")
+  );
+  if (!decisionEvent) return null;
+  return decisionEvent.event_type === "insurance_approved" ? "approved" : "denied";
+}
+
+export function insuranceDecisionLabel(decision: "approved" | "denied"): string {
+  return decision === "approved" ? "Approved" : "Denied";
+}
+
 export function eventSummaryWithUser(
   event: ClaimEvent,
   claimUserName?: string
@@ -116,6 +134,10 @@ export function eventSummary(event: ClaimEvent): string {
       return "Submitted to insurance";
     case "insurance_claim_created":
       return "Insurance claim created";
+    case "insurance_approved":
+      return "Insurance approved";
+    case "insurance_denied":
+      return "Insurance denied";
     case "claim_matched_approved":
       return "Claim matched and approved";
     case "claim_matched_denied":
