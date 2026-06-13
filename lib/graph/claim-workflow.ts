@@ -1,6 +1,6 @@
 import { Annotation, Command, END, START, StateGraph, interrupt } from "@langchain/langgraph";
 import { desc, eq } from "drizzle-orm";
-import { validateReceipt } from "@/lib/ai/receipt-validator";
+import { validateReceipt, normalizeExtractedDate } from "@/lib/ai/receipt-validator";
 import { getDb, schema } from "@/lib/db";
 import {
   emitEvent,
@@ -66,7 +66,7 @@ export function buildClaimWorkflow() {
       .set({
         receipt_extracted_patient_name: validation.extractedPatientName,
         receipt_extracted_amount: String(validation.extractedAmount),
-        receipt_extracted_date: validation.extractedDate,
+        receipt_extracted_date: normalizeExtractedDate(validation.extractedDate),
         updated_at: new Date(),
       })
       .where(eq(claimRequests.id, state.claimRequestId));

@@ -6,6 +6,7 @@ import {
   datesMatch,
   getReceiptMimeType,
   isPdfReceipt,
+  normalizeExtractedDate,
   normalizePatientName,
   patientNamesMatch,
 } from "@/lib/ai/receipt-validator";
@@ -29,6 +30,24 @@ describe("receipt-validator", () => {
 
   it("matches dates by day", () => {
     expect(datesMatch("2024-06-01T00:00:00", "2024-06-01")).toBe(true);
+  });
+
+  it("normalizes extracted dates for storage", () => {
+    expect(normalizeExtractedDate("")).toBeNull();
+    expect(normalizeExtractedDate("   ")).toBeNull();
+    expect(normalizeExtractedDate("2024-06-01T00:00:00")).toBe("2024-06-01");
+    expect(normalizeExtractedDate("not-a-date")).toBeNull();
+  });
+
+  it("fails validation when extracted date is empty", () => {
+    const result = compareReceiptToClaim(
+      { patientName: "John Smith", amount: 150, date: "" },
+      claim,
+      "live"
+    );
+    expect(result.dateMatch).toBe(false);
+    expect(result.passed).toBe(false);
+    expect(result.extractedDate).toBe("");
   });
 
   it("passes when all fields match", () => {

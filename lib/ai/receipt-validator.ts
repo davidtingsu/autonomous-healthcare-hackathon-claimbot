@@ -27,6 +27,15 @@ export function datesMatch(extracted: string, serviceDate: string): boolean {
   return extracted.slice(0, 10) === serviceDate.slice(0, 10);
 }
 
+export function normalizeExtractedDate(
+  value: string | null | undefined
+): string | null {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) return null;
+  const day = trimmed.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
+}
+
 export type ReceiptValidationInput = {
   claimedAmount: number;
   serviceDate: string;
@@ -58,12 +67,14 @@ export function compareReceiptToClaim(
   claim: ReceiptValidationInput,
   mode: "live" | "faked"
 ): ReceiptValidationResult {
+  const normalizedDate = normalizeExtractedDate(extracted.date);
+  const dateForMatch = normalizedDate ?? "";
   const patientNameMatch = patientNamesMatch(
     extracted.patientName,
     claim.expectedPatientName
   );
   const amountMatch = amountsMatch(extracted.amount, claim.claimedAmount);
-  const dateMatch = datesMatch(extracted.date, claim.serviceDate);
+  const dateMatch = datesMatch(dateForMatch, claim.serviceDate);
   const passed = patientNameMatch && amountMatch && dateMatch;
   const reasons: string[] = [];
 
@@ -79,7 +90,7 @@ export function compareReceiptToClaim(
   }
   if (!dateMatch) {
     reasons.push(
-      `Date mismatch: receipt ${extracted.date} vs service date ${claim.serviceDate}`
+      `Date mismatch: receipt ${dateForMatch || "(missing)"} vs service date ${claim.serviceDate}`
     );
   }
   if (mode === "faked") {
@@ -90,7 +101,7 @@ export function compareReceiptToClaim(
     mode,
     extractedPatientName: extracted.patientName,
     extractedAmount: extracted.amount,
-    extractedDate: extracted.date,
+    extractedDate: dateForMatch,
     expectedPatientName: claim.expectedPatientName,
     patientNameMatch,
     amountMatch,
