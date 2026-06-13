@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,7 @@ export function BenefitsPanel() {
   }, [events, claims, filterUserId]);
 
   const [edits, setEdits] = useState<Record<string, { userId: string; amount: string; date: string }>>({});
+  const [pending, setPending] = useState<{ claimId: string; action: string } | null>(null);
 
   function getEdit(claimId: string, claim: (typeof claims)[0]) {
     return (
@@ -66,25 +68,35 @@ export function BenefitsPanel() {
   async function saveEdits(claimId: string) {
     const edit = edits[claimId];
     if (!edit) return;
-    await fetch(`/api/claims/${claimId}`, {
-      method: "PATCH",
-      headers: actorHeaders("benefits_company"),
-      body: JSON.stringify({
-        userId: edit.userId,
-        claimedAmount: Number(edit.amount),
-        serviceDate: edit.date,
-      }),
-    });
-    await refresh();
+    setPending({ claimId, action: "save" });
+    try {
+      await fetch(`/api/claims/${claimId}`, {
+        method: "PATCH",
+        headers: actorHeaders("benefits_company"),
+        body: JSON.stringify({
+          userId: edit.userId,
+          claimedAmount: Number(edit.amount),
+          serviceDate: edit.date,
+        }),
+      });
+      await refresh();
+    } finally {
+      setPending(null);
+    }
   }
 
   async function reviewAction(claimId: string, action: "revise" | "submit" | "cancel") {
-    await fetch(`/api/claims/${claimId}/benefits-review`, {
-      method: "POST",
-      headers: actorHeaders("benefits_company"),
-      body: JSON.stringify({ action }),
-    });
-    await refresh();
+    setPending({ claimId, action });
+    try {
+      await fetch(`/api/claims/${claimId}/benefits-review`, {
+        method: "POST",
+        headers: actorHeaders("benefits_company"),
+        body: JSON.stringify({ action }),
+      });
+      await refresh();
+    } finally {
+      setPending(null);
+    }
   }
 
   const historyEvents = benefitsEvents.filter(
@@ -189,18 +201,50 @@ export function BenefitsPanel() {
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => saveEdits(claim.id)}>
-                      Save edits
-                    </Button>
-                    <Button size="sm" variant="secondary" onClick={() => reviewAction(claim.id, "revise")}>
-                      Request revision
-                    </Button>
-                    <Button size="sm" onClick={() => reviewAction(claim.id, "submit")}>
-                      Submit to insurance
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => reviewAction(claim.id, "cancel")}>
-                      Cancel for submission
-                    </Button>
+                    {(() => {
+                      const busy = pending?.claimId === claim.id;
+                      const isAction = (action: string) =>
+                        busy && pending?.action === action;
+                      return (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => saveEdits(claim.id)}
+                          >
+                            {isAction("save") && <Loader2 className="animate-spin" />}
+                            {isAction("save") ? "Saving..." : "Save edits"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={busy}
+                            onClick={() => reviewAction(claim.id, "revise")}
+                          >
+                            {isAction("revise") && <Loader2 className="animate-spin" />}
+                            {isAction("revise") ? "Requesting..." : "Request revision"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => reviewAction(claim.id, "submit")}
+                          >
+                            {isAction("submit") && <Loader2 className="animate-spin" />}
+                            {isAction("submit") ? "Submitting..." : "Submit to insurance"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            disabled={busy}
+                            onClick={() => reviewAction(claim.id, "cancel")}
+                          >
+                            {isAction("cancel") && <Loader2 className="animate-spin" />}
+                            {isAction("cancel") ? "Cancelling..." : "Cancel for submission"}
+                          </Button>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               );

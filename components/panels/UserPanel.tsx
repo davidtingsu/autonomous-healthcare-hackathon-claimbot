@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,6 +75,8 @@ export function UserPanel() {
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [patientUserId, setPatientUserId] = useState(selectedUserId);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [savingClaimId, setSavingClaimId] = useState<string | null>(null);
 
   const subscribers = users.filter((u) => !u.primary_id);
   const dependents = users.filter((u) => u.primary_id === selectedUserId);
@@ -104,37 +107,47 @@ export function UserPanel() {
     }
 
     setCreateError(null);
-    const form = new FormData();
-    form.append("userId", patientUserId);
-    form.append("claimedAmount", amount);
-    form.append("serviceDate", serviceDate);
-    form.append("receipt", receiptFile);
-    const res = await fetch("/api/claims", {
-      method: "POST",
-      headers: { "X-Actor-Role": actorRole },
-      body: form,
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setCreateError(data.error ?? "Failed to create claim");
-      return;
+    setCreating(true);
+    try {
+      const form = new FormData();
+      form.append("userId", patientUserId);
+      form.append("claimedAmount", amount);
+      form.append("serviceDate", serviceDate);
+      form.append("receipt", receiptFile);
+      const res = await fetch("/api/claims", {
+        method: "POST",
+        headers: { "X-Actor-Role": actorRole },
+        body: form,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setCreateError(data.error ?? "Failed to create claim");
+        return;
+      }
+      setShowCreate(false);
+      setReceiptFile(null);
+      await refresh();
+    } finally {
+      setCreating(false);
     }
-    setShowCreate(false);
-    setReceiptFile(null);
-    await refresh();
   }
 
   async function updateClaim(claimId: string) {
-    await fetch(`/api/claims/${claimId}`, {
-      method: "PATCH",
-      headers: actorHeaders("user"),
-      body: JSON.stringify({
-        claimedAmount: Number(amount),
-        serviceDate,
-      }),
-    });
-    setEditingClaimId(null);
-    await refresh();
+    setSavingClaimId(claimId);
+    try {
+      await fetch(`/api/claims/${claimId}`, {
+        method: "PATCH",
+        headers: actorHeaders("user"),
+        body: JSON.stringify({
+          claimedAmount: Number(amount),
+          serviceDate,
+        }),
+      });
+      setEditingClaimId(null);
+      await refresh();
+    } finally {
+      setSavingClaimId(null);
+    }
   }
 
   async function markRead(ids: string[]) {
@@ -255,8 +268,9 @@ export function UserPanel() {
                 {createError && (
                   <p className="text-xs text-destructive">{createError}</p>
                 )}
-                <Button size="sm" onClick={createClaim} disabled={!receiptFile}>
-                  Submit claim
+                <Button size="sm" onClick={createClaim} disabled={!receiptFile || creating}>
+                  {creating && <Loader2 className="animate-spin" />}
+                  {creating ? "Submitting..." : "Submit claim"}
                 </Button>
               </div>
             )}
@@ -301,7 +315,14 @@ export function UserPanel() {
               <div className="mt-2 space-y-2 border-t pt-2">
                 <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
                 <Input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} />
-                <Button size="sm" onClick={() => updateClaim(n.claim_request_id)}>Save & resubmit</Button>
+                <Button
+                  size="sm"
+                  disabled={savingClaimId === n.claim_request_id}
+                  onClick={() => updateClaim(n.claim_request_id)}
+                >
+                  {savingClaimId === n.claim_request_id && <Loader2 className="animate-spin" />}
+                  {savingClaimId === n.claim_request_id ? "Saving..." : "Save & resubmit"}
+                </Button>
               </div>
             )}
           </div>

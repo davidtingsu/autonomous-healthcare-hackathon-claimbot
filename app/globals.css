@@ -128,3 +128,34 @@
     @apply font-sans;
   }
 }
+
+/* Animate claim tokens gliding between lifecycle stage nodes.
+   React Flow reuses the node DOM element across re-renders (keyed by node id),
+   so transitioning the wrapper transform smoothly moves a token to its new stage. */
+.react-flow__node-claimToken {
+  transition: transform 0.8s cubic-bezier(0.42, 0.01, 0.28, 1);
+}
+
+.react-flow__node-claimToken.claim-token-enter {
+  animation: claim-token-pop 0.4s ease-out;
+}
+
+@keyframes claim-token-pop {
+  0% {
+    opacity: 0;
+    scale: 0.6;
+  }
+  100% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__node-claimToken {
+    transition: none;
+  }
+  .react-flow__node-claimToken.claim-token-enter {
+    animation: none;
+  }
+}

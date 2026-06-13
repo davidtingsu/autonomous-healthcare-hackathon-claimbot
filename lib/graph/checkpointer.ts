@@ -1,43 +1,25 @@
-import { eq } from "drizzle-orm";
-import { MemorySaver } from "@langchain/langgraph-checkpoint";
-import { getDb, schema } from "@/lib/db";
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 
-const { langgraphCheckpoints } = schema;
-const memorySaver = new MemorySaver();
+const globalForCheckpointer = globalThis as unknown as {
+  __claimbotCheckpointer?: PostgresSaver;
+  __claimbotCheckpointerSetup?: Promise<void>;
+};
 
-export function getCheckpointer() {
-  return memorySaver;
+export function getCheckpointer(): PostgresSaver {
+  if (!globalForCheckpointer.__claimbotCheckpointer) {
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      throw new Error("DATABASE_URL is required for the LangGraph checkpointer");
+    }
+    globalForCheckpointer.__claimbotCheckpointer =
+      PostgresSaver.fromConnString(url);
+  }
+  return globalForCheckpointer.__claimbotCheckpointer;
 }
 
-export async function saveCheckpointToDb(
-  threadId: string,
-  checkpoint: Record<string, unknown>
-) {
-  const db = getDb();
-  await db
-    .insert(langgraphCheckpoints)
-    .values({
-      thread_id: threadId,
-      checkpoint,
-      updated_at: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: langgraphCheckpoints.thread_id,
-      set: {
-        checkpoint,
-        updated_at: new Date(),
-      },
-    });
-}
-
-export async function loadCheckpointFromDb(
-  threadId: string
-): Promise<Record<string, unknown> | null> {
-  const db = getDb();
-  const [row] = await db
-    .select({ checkpoint: langgraphCheckpoints.checkpoint })
-    .from(langgraphCheckpoints)
-    .where(eq(langgraphCheckpoints.thread_id, threadId))
-    .limit(1);
-  return (row?.checkpoint as Record<string, unknown>) ?? null;
+export function ensureCheckpointerReady(): Promise<void> {
+  if (!globalForCheckpointer.__claimbotCheckpointerSetup) {
+    globalForCheckpointer.__claimbotCheckpointerSetup = getCheckpointer().setup();
+  }
+  return globalForCheckpointer.__claimbotCheckpointerSetup;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
@@ -45,6 +45,20 @@ export function ClaimFlowDiagram() {
     () => getClaimsByStage(claims, events),
     [claims, events]
   );
+
+  const seenClaimIdsRef = useRef<Set<string>>(new Set());
+  const [enteringIds, setEnteringIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const seen = seenClaimIdsRef.current;
+    const fresh = claims.filter((claim) => !seen.has(claim.id));
+    if (fresh.length === 0) return;
+
+    for (const claim of fresh) seen.add(claim.id);
+    setEnteringIds(new Set(fresh.map((claim) => claim.id)));
+    const timer = window.setTimeout(() => setEnteringIds(new Set()), 450);
+    return () => window.clearTimeout(timer);
+  }, [claims]);
 
   const activeTargetStages = useMemo(() => {
     const stages = new Set<string>();
@@ -108,6 +122,7 @@ export function ClaimFlowDiagram() {
         nodes.push({
           id: `token-${claim.id}`,
           type: "claimToken",
+          className: enteringIds.has(claim.id) ? "claim-token-enter" : undefined,
           position: {
             x: stage.x + offset.x - 44,
             y: stage.y + offset.y,
@@ -151,6 +166,7 @@ export function ClaimFlowDiagram() {
     selectedClaimId,
     activeTargetStages,
     validationByStage,
+    enteringIds,
   ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(builtNodes);

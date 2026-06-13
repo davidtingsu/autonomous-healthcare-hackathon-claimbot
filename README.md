@@ -30,6 +30,13 @@ This drops and recreates all tables with valid demo user UUIDs. **supabase-js** 
 
 Legacy SQL files in `supabase/migrations/` are superseded by `drizzle/0000_reset.sql`.
 
+> **Checkpointer note:** LangGraph HITL interrupt state is persisted by a `PostgresSaver`
+> (from `@langchain/langgraph-checkpoint-postgres`) using the same `DATABASE_URL`. It
+> calls `setup()` at runtime to create its own `checkpoints*` tables (no Drizzle migration
+> needed). The saver uses node-postgres with named prepared statements, which can break
+> against Supabase's transaction pooler (PgBouncer, port 6543). If checkpointer queries
+> error, point `DATABASE_URL` at the session pooler (port 5432) or a direct connection.
+
 3. Install and run:
 
 ```bash

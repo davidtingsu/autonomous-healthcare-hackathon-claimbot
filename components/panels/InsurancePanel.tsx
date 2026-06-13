@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ActorEventFeed } from "@/components/panels/ActorEventFeed";
@@ -27,6 +28,7 @@ import { STATUS_BADGE_CLASS } from "@/lib/types";
 export function InsurancePanel() {
   const { users, claims, events, setSelectedClaimId, refresh } = useCommandCenter();
   const [filterUserId, setFilterUserId] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ claimId: string; action: string } | null>(null);
   const usersById = useMemo(() => buildUsersById(users), [users]);
 
   const pendingClaims = useMemo(
@@ -61,12 +63,17 @@ export function InsurancePanel() {
   }
 
   async function review(claimId: string, action: "approve" | "deny") {
-    await fetch(`/api/claims/${claimId}/insurance-review`, {
-      method: "POST",
-      headers: actorHeaders("insurance_company"),
-      body: JSON.stringify({ action }),
-    });
-    await refresh();
+    setPending({ claimId, action });
+    try {
+      await fetch(`/api/claims/${claimId}/insurance-review`, {
+        method: "POST",
+        headers: actorHeaders("insurance_company"),
+        body: JSON.stringify({ action }),
+      });
+      await refresh();
+    } finally {
+      setPending(null);
+    }
   }
 
   const historyEvents = insuranceEvents.filter((event) => {
@@ -125,11 +132,30 @@ export function InsurancePanel() {
                     </p>
                   )}
                   <div className="mt-3 flex gap-2">
-                    <Button size="sm" onClick={() => review(claim.id, "approve")}>
-                      Approve
+                    <Button
+                      size="sm"
+                      disabled={pending?.claimId === claim.id}
+                      onClick={() => review(claim.id, "approve")}
+                    >
+                      {pending?.claimId === claim.id && pending?.action === "approve" && (
+                        <Loader2 className="animate-spin" />
+                      )}
+                      {pending?.claimId === claim.id && pending?.action === "approve"
+                        ? "Approving..."
+                        : "Approve"}
                     </Button>
-                    <Button size="sm" variant="destructive" onClick={() => review(claim.id, "deny")}>
-                      Deny
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={pending?.claimId === claim.id}
+                      onClick={() => review(claim.id, "deny")}
+                    >
+                      {pending?.claimId === claim.id && pending?.action === "deny" && (
+                        <Loader2 className="animate-spin" />
+                      )}
+                      {pending?.claimId === claim.id && pending?.action === "deny"
+                        ? "Denying..."
+                        : "Deny"}
                     </Button>
                   </div>
                 </div>

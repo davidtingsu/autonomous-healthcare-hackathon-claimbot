@@ -9,7 +9,7 @@ import {
   NOTIFICATION_MESSAGES,
   updateClaimStatus,
 } from "@/lib/graph/events";
-import { getCheckpointer } from "@/lib/graph/checkpointer";
+import { ensureCheckpointerReady, getCheckpointer } from "@/lib/graph/checkpointer";
 import type {
   BenefitsAction,
   ClaimGraphState,
@@ -279,6 +279,7 @@ export async function runBenefitsReview(
   state: ClaimGraphState,
   threadId: string
 ) {
+  await ensureCheckpointerReady();
   const graph = buildClaimWorkflow();
   const config = { configurable: { thread_id: threadId } };
   return graph.invoke(state, config);
@@ -288,6 +289,7 @@ export async function resumeBenefitsReview(
   threadId: string,
   action: BenefitsAction
 ) {
+  await ensureCheckpointerReady();
   const graph = buildClaimWorkflow();
   const config = { configurable: { thread_id: threadId } };
   return graph.invoke(new Command({ resume: action }), config);
@@ -297,6 +299,7 @@ export async function resumeInsuranceReview(
   threadId: string,
   action: InsuranceAction
 ) {
+  await ensureCheckpointerReady();
   const graph = buildClaimWorkflow();
   const config = { configurable: { thread_id: threadId } };
   return graph.invoke(new Command({ resume: action }), config);
