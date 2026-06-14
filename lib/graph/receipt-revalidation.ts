@@ -5,6 +5,7 @@ import {
 } from "@/lib/ai/receipt-validator";
 import { getDb, schema } from "@/lib/db";
 import { emitEvent, getClaimWithUser } from "@/lib/graph/events";
+import { formatUserLabel } from "@/lib/user-display";
 import { eq } from "drizzle-orm";
 
 const { claimRequests } = schema;
@@ -17,7 +18,11 @@ export async function revalidateClaimReceipt(
   claimRequestId: string
 ): Promise<ReceiptValidationResult> {
   const claim = await getClaimWithUser(claimRequestId);
-  const user = claim.users as { first_name: string; last_name: string };
+  const user = claim.users as {
+    first_name: string;
+    last_name: string;
+    primary_id: string | null;
+  };
 
   await emitEvent(claimRequestId, "receipt_validation_started", "system");
 
@@ -25,6 +30,7 @@ export async function revalidateClaimReceipt(
     claimedAmount: Number(claim.claimed_amount),
     serviceDate: String(claim.service_date),
     expectedPatientName: userFullName(user),
+    expectedPatientLabel: formatUserLabel(user),
     receiptUrl: claim.receipt_url,
   });
 

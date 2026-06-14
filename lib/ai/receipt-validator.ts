@@ -40,6 +40,8 @@ export type ReceiptValidationInput = {
   claimedAmount: number;
   serviceDate: string;
   expectedPatientName: string;
+  /** Label shown in validation errors; includes "(dependent)" when applicable. */
+  expectedPatientLabel?: string;
   receiptUrl?: string | null;
 };
 
@@ -83,12 +85,15 @@ export function compareReceiptToClaim(
 
   const passed = patientNameMatch && amountMatch && dateMatch;
   const reasons: string[] = [];
+  const expectedLabel = claim.expectedPatientLabel ?? claim.expectedPatientName;
 
   if (patientNameMissing) {
-    reasons.push("Patient name missing from receipt scan");
+    reasons.push(
+      `Patient name missing from receipt scan (expected claim patient: ${expectedLabel})`
+    );
   } else if (!patientNameMatch) {
     reasons.push(
-      `Patient name mismatch: receipt "${extracted.patientName}" vs expected "${claim.expectedPatientName}"`
+      `Patient name mismatch: receipt "${extracted.patientName}" vs claim patient "${expectedLabel}"`
     );
   }
   if (amountMissing) {

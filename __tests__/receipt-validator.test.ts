@@ -58,7 +58,25 @@ describe("receipt-validator", () => {
       "live"
     );
     expect(result.passed).toBe(false);
-    expect(result.reasons).toContain("Patient name missing from receipt scan");
+    expect(result.reasons).toContain(
+      "Patient name missing from receipt scan (expected claim patient: John Smith)"
+    );
+  });
+
+  it("mentions dependent in patient name mismatch", () => {
+    const result = compareReceiptToClaim(
+      { patientName: "Jane Doe", amount: 150, date: "2024-06-01" },
+      {
+        ...claim,
+        expectedPatientName: "Emily Smith",
+        expectedPatientLabel: "Emily Smith (dependent)",
+      },
+      "live"
+    );
+    expect(result.passed).toBe(false);
+    expect(result.reasons).toContain(
+      'Patient name mismatch: receipt "Jane Doe" vs claim patient "Emily Smith (dependent)"'
+    );
   });
 
   it("fails validation when amount is missing", () => {

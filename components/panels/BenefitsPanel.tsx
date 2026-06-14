@@ -27,6 +27,7 @@ import {
   buildUsersById,
   filterClaimsByUserId,
   filterEventsByClaimUser,
+  getClaimPatientLabel,
   getClaimUserName,
   shortClaimId,
 } from "@/lib/user-display";
@@ -276,7 +277,13 @@ export function BenefitsPanel() {
 
   function renderClaimCard(claim: ClaimRequest, showReviewActions: boolean) {
     const patientName = claimName(claim);
-    const validation = getClaimValidationState(claim, benefitsEvents, patientName);
+    const patientLabel = getClaimPatientLabel(claim, usersById);
+    const validation = getClaimValidationState(
+      claim,
+      benefitsEvents,
+      patientName,
+      patientLabel
+    );
     const edit = getEdit(claim.id, claim);
     const busy = pending?.claimId === claim.id;
     const isAction = (action: string) => busy && pending?.action === action;

@@ -1,6 +1,7 @@
 import { Annotation, Command, END, START, StateGraph, interrupt } from "@langchain/langgraph";
 import { desc, eq } from "drizzle-orm";
 import { validateReceipt, normalizeExtractedDate } from "@/lib/ai/receipt-validator";
+import { formatUserLabel } from "@/lib/user-display";
 import { getDb, schema } from "@/lib/db";
 import {
   emitEvent,
@@ -49,7 +50,11 @@ export function buildClaimWorkflow() {
 
   async function benefitsHITL(state: State) {
     const claim = await getClaimWithUser(state.claimRequestId);
-    const user = claim.users as { first_name: string; last_name: string };
+    const user = claim.users as {
+      first_name: string;
+      last_name: string;
+      primary_id: string | null;
+    };
 
     await emitEvent(state.claimRequestId, "receipt_validation_started", "system");
 
@@ -57,6 +62,7 @@ export function buildClaimWorkflow() {
       claimedAmount: Number(claim.claimed_amount),
       serviceDate: String(claim.service_date),
       expectedPatientName: userFullName(user),
+      expectedPatientLabel: formatUserLabel(user),
       receiptUrl: claim.receipt_url,
     });
 

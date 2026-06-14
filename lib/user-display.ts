@@ -38,7 +38,9 @@ export function getClaimUserShortName(
   return formatUserShortName(usersById.get(claim.user_id));
 }
 
-export function formatUserLabel(user: User): string {
+export function formatUserLabel(
+  user: Pick<User, "first_name" | "last_name" | "primary_id">
+): string {
   const name = formatUserName(user);
   return user.primary_id ? `${name} (dependent)` : name;
 }
@@ -53,6 +55,14 @@ export function getClaimUserName(
 ): string {
   if (claim.users) return formatUserName(claim.users);
   return formatUserName(usersById.get(claim.user_id));
+}
+
+export function getClaimPatientLabel(
+  claim: ClaimRequest,
+  usersById?: Map<string, User>
+): string {
+  const user = claim.users ?? usersById?.get(claim.user_id);
+  return user ? formatUserLabel(user) : formatUserName(user);
 }
 
 export function shortClaimId(claimId: string): string {

@@ -10,6 +10,7 @@ import {
   formatUserShortName,
   formatPatientLabel,
   formatSubscriberLabel,
+  getClaimPatientLabel,
   getClaimUserName,
 } from "@/lib/user-display";
 
@@ -96,6 +97,12 @@ describe("user-display", () => {
 
     const claimWithoutJoin = { ...claims[1], users: undefined };
     expect(getClaimUserName(claimWithoutJoin, usersById)).toBe("Emily Smith");
+  });
+
+  it("gets claim patient label with dependent suffix", () => {
+    const usersById = buildUsersById(users);
+    expect(getClaimPatientLabel(claims[0], usersById)).toBe("John Smith");
+    expect(getClaimPatientLabel(claims[1], usersById)).toBe("Emily Smith (dependent)");
   });
 
   it("filters claims by user id", () => {

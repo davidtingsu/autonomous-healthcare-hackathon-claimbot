@@ -24,9 +24,11 @@ export function buildValidationIssuesFromResult(
     | "dateMatch"
     | "reasons"
   >,
-  claim: Pick<ClaimRequest, "claimed_amount" | "service_date">
+  claim: Pick<ClaimRequest, "claimed_amount" | "service_date">,
+  expectedPatientLabel?: string
 ): ReceiptValidationIssue[] {
   const issues: ReceiptValidationIssue[] = [];
+  const patientLabel = expectedPatientLabel ?? result.expectedPatientName;
 
   const nameMissing = !result.extractedPatientName?.trim();
   const amountMissing =
@@ -37,13 +39,13 @@ export function buildValidationIssuesFromResult(
     issues.push({
       field: "patientName",
       kind: "missing",
-      message: "Patient name could not be read from the receipt scan.",
+      message: `Patient name could not be read from the receipt scan. Expected claim patient: ${patientLabel}.`,
     });
   } else if (!result.patientNameMatch) {
     issues.push({
       field: "patientName",
       kind: "mismatch",
-      message: `Patient name mismatch: receipt "${result.extractedPatientName}" vs claim "${result.expectedPatientName}".`,
+      message: `Patient name mismatch: receipt "${result.extractedPatientName}" vs claim patient "${patientLabel}".`,
     });
   }
 
@@ -80,7 +82,8 @@ export function buildValidationIssuesFromResult(
 
 export function buildValidationIssuesFromClaim(
   claim: ClaimRequest,
-  expectedPatientName: string
+  expectedPatientName: string,
+  expectedPatientLabel?: string
 ): ReceiptValidationIssue[] {
   const extractedName = claim.receipt_extracted_patient_name ?? "";
   const extractedAmount = claim.receipt_extracted_amount;
@@ -112,14 +115,16 @@ export function buildValidationIssuesFromClaim(
         datesMatch(extractedDate, String(claim.service_date)),
       reasons: [],
     },
-    claim
+    claim,
+    expectedPatientLabel
   );
 }
 
 export function validationIssuesFromEventPayload(
   payload: Record<string, unknown>,
   claim: ClaimRequest,
-  expectedPatientName: string
+  expectedPatientName: string,
+  expectedPatientLabel?: string
 ): ReceiptValidationIssue[] {
   if (payload.passed === true) return [];
 
@@ -134,7 +139,8 @@ export function validationIssuesFromEventPayload(
       dateMatch: Boolean(payload.dateMatch),
       reasons: (payload.reasons as string[]) ?? [],
     },
-    claim
+    claim,
+    expectedPatientLabel
   );
 }
 
@@ -148,7 +154,8 @@ export type ClaimValidationState = {
 export function getClaimValidationState(
   claim: ClaimRequest,
   events: ClaimEvent[],
-  expectedPatientName: string
+  expectedPatientName: string,
+  expectedPatientLabel?: string
 ): ClaimValidationState {
   const claimEvents = events
     .filter(
@@ -190,7 +197,8 @@ export function getClaimValidationState(
       : validationIssuesFromEventPayload(
           payload as Record<string, unknown>,
           claim,
-          expectedPatientName
+          expectedPatientName,
+          expectedPatientLabel
         );
 
     return {
@@ -201,7 +209,11 @@ export function getClaimValidationState(
     };
   }
 
-  const issues = buildValidationIssuesFromClaim(claim, expectedPatientName);
+  const issues = buildValidationIssuesFromClaim(
+    claim,
+    expectedPatientName,
+    expectedPatientLabel
+  );
   return {
     scanning: false,
     passed: issues.length === 0 && Boolean(claim.receipt_extracted_patient_name),
